@@ -69,7 +69,10 @@ export default function Home() {
 
     const { error } = await supabase.auth.signInWithOtp({
       email,
-      options: { emailRedirectTo: window.location.origin },
+      options: {
+        // ✅ DIT is de juiste plek + het juiste pad
+        emailRedirectTo: `${window.location.origin}/auth/callback`,
+      },
     });
 
     if (error) alert(error.message);
@@ -83,7 +86,9 @@ export default function Home() {
       <h1>Synergos Volgsysteem</h1>
 
       {userEmail ? (
-        <p>Ingelogd als <b>{userEmail}</b> — rol bepalen…</p>
+        <p>
+          Ingelogd als <b>{userEmail}</b> — rol bepalen…
+        </p>
       ) : (
         <>
           <p>Je bent niet ingelogd.</p>
@@ -91,11 +96,7 @@ export default function Home() {
         </>
       )}
 
-      {error && (
-        <div style={{ marginTop: 16, color: "#b91c1c" }}>
-          {error}
-        </div>
-      )}
+      {error && <div style={{ marginTop: 16, color: "#b91c1c" }}>{error}</div>}
     </div>
   );
 }
