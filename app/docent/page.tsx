@@ -116,11 +116,18 @@ function badge(status: Status) {
   );
 }
 
+function hasContent(item: TeacherItem) {
+  return (item.score !== null && item.score !== undefined) || item.feedback.trim().length > 0;
+}
+
 export default function DocentPage() {
   const [openTheme, setOpenTheme] = useState<string | null>(null);
 
   // Store per item (per moment/per vraag)
   const [teacherStore, setTeacherStore] = useState<TeacherStore>({});
+
+  // UI: feedback dropdown open/close per item
+  const [openFeedback, setOpenFeedback] = useState<Record<string, boolean>>({});
 
   // load from localStorage
   useEffect(() => {
@@ -207,7 +214,6 @@ export default function DocentPage() {
     const nextItem: TeacherItem = {
       ...prev,
       ...args.patch,
-      // elke wijziging is in principe concept, tenzij expliciet published wordt gezet
       status:
         args.patch.status ??
         (prev.status === "published" ? "published" : "draft"),
@@ -218,8 +224,6 @@ export default function DocentPage() {
   }
 
   function saveDrafts() {
-    // In deze mock variant is alles al “persisted” zodra je typt.
-    // Maar we houden deze knop omdat je straks deze action naar API wilt sturen.
     alert("Concept opgeslagen (localStorage).");
   }
 
@@ -250,6 +254,10 @@ export default function DocentPage() {
 
     persist(next);
     alert(`${moment} is nu zichtbaar voor student (gepubliceerd).`);
+  }
+
+  function toggleFeedback(rowKey: string) {
+    setOpenFeedback((prev) => ({ ...prev, [rowKey]: !(prev[rowKey] ?? false) }));
   }
 
   return (
@@ -373,108 +381,173 @@ export default function DocentPage() {
                       questionId: q.id,
                     });
 
+                    const rowKey = `${theme.id}__${q.id}__${m}`;
+                    const isOpen = openFeedback[rowKey] ?? false;
+
                     return (
                       <div
                         key={m}
                         style={{
-                          display: "grid",
-                          gridTemplateColumns: "130px 1fr 1fr",
-                          gap: 12,
-                          alignItems: "start",
                           padding: "10px 0",
                           borderTop: "1px dashed #eee",
                         }}
                       >
-                        <div>
-                          <div style={{ fontSize: 12, color: "#666" }}>{m}</div>
-                          <div style={{ marginTop: 4 }}>
-                            <div style={{ fontSize: 12, color: "#666" }}>
-                              Student
+                        {/* compacte bovenrij: student + correctie */}
+                        <div
+                          style={{
+                            display: "grid",
+                            gridTemplateColumns: "240px 1fr",
+                            gap: 16,
+                            alignItems: "start",
+                          }}
+                        >
+                          {/* STUDENT */}
+                          <div>
+                            <div style={{ fontSize: 12, color: "#666" }}>{m}</div>
+                            <div style={{ marginTop: 4 }}>
+                              <div style={{ fontSize: 12, color: "#666" }}>
+                                Student
+                              </div>
+                              <ProgressBar value={studentScore} />
                             </div>
-                            <ProgressBar value={studentScore} />
+                          </div>
+
+                          {/* DOCENT CORRECTIE */}
+                          <div>
+                            <div
+                              style={{
+                                display: "flex",
+                                gap: 8,
+                                alignItems: "center",
+                                justifyContent: "space-between",
+                                marginBottom: 6,
+                              }}
+                            >
+                              <div style={{ fontSize: 12, color: "#666" }}>
+                                Docent correctie
+                              </div>
+
+                              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                                {/* indicator feedback gevuld */}
+                                <span style={{ fontSize: 12, color: "#666" }}>
+                                  {item.feedback.trim()
+                                    ? "Feedback: ingevuld"
+                                    : "Feedback: leeg"}
+                                </span>
+                                {badge(item.status)}
+                              </div>
+                            </div>
+
+                            <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                              <input
+                                type="number"
+                                min={0}
+                                max={10}
+                                step={1}
+                                value={item.score ?? ""}
+                                onChange={(e) => {
+                                  const raw = e.target.value;
+                                  const val = raw.trim() === "" ? null : Number(raw);
+                                  upsertTeacherItem({
+                                    moment: m,
+                                    themeId: theme.id,
+                                    questionId: q.id,
+                                    patch: {
+                                      score:
+                                        val === null || Number.isNaN(val)
+                                          ? null
+                                          : Math.max(0, Math.min(10, val)),
+                                      status: "draft",
+                                    },
+                                  });
+                                }}
+                                placeholder="0–10"
+                                style={{
+                                  width: 90,
+                                  padding: "8px 10px",
+                                  border: "1px solid #ddd",
+                                  borderRadius: 8,
+                                }}
+                              />
+                              <ProgressBar value={item.score} />
+                            </div>
+
+                            {/* dropdown toggle */}
+                            <div style={{ marginTop: 8 }}>
+                              <button
+                                type="button"
+                                onClick={() => toggleFeedback(rowKey)}
+                                style={{
+                                  padding: "6px 10px",
+                                  background: "#fff",
+                                  border: "1px solid #ddd",
+                                  borderRadius: 8,
+                                  cursor: "pointer",
+                                  fontSize: 12,
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: 8,
+                                }}
+                              >
+                                {isOpen ? "▾" : "▸"} Docent feedback
+                                {item.feedback.trim() && (
+                                  <span
+                                    style={{
+                                      fontSize: 12,
+                                      padding: "2px 8px",
+                                      borderRadius: 999,
+                                      background: "#f2f2f2",
+                                      border: "1px solid #ddd",
+                                      color: "#444",
+                                    }}
+                                  >
+                                    ingevuld
+                                  </span>
+                                )}
+                              </button>
+                            </div>
                           </div>
                         </div>
 
-                        {/* DOCENT CORRECTIE */}
-                        <div>
+                        {/* dropdown content */}
+                        {isOpen && (
                           <div
                             style={{
-                              display: "flex",
-                              gap: 8,
-                              alignItems: "center",
-                              marginBottom: 6,
+                              marginTop: 10,
+                              padding: 12,
+                              border: "1px solid #eee",
+                              borderRadius: 10,
+                              background: "#fafafa",
                             }}
                           >
-                            <div style={{ fontSize: 12, color: "#666" }}>
-                              Docent correctie
+                            <div style={{ fontSize: 12, color: "#666", marginBottom: 6 }}>
+                              Docent feedback ({m})
                             </div>
-                            {badge(item.status)}
-                          </div>
-
-                          <div style={{ display: "flex", gap: 10 }}>
-                            <input
-                              type="number"
-                              min={0}
-                              max={10}
-                              step={1}
-                              value={item.score ?? ""}
-                              onChange={(e) => {
-                                const raw = e.target.value;
-                                const val =
-                                  raw.trim() === "" ? null : Number(raw);
+                            <textarea
+                              placeholder="Feedback op deze vraag (concept)…"
+                              value={item.feedback}
+                              onChange={(e) =>
                                 upsertTeacherItem({
                                   moment: m,
                                   themeId: theme.id,
                                   questionId: q.id,
-                                  patch: {
-                                    score:
-                                      val === null || Number.isNaN(val)
-                                        ? null
-                                        : Math.max(0, Math.min(10, val)),
-                                    status: "draft",
-                                  },
-                                });
-                              }}
-                              placeholder="0–10"
+                                  patch: { feedback: e.target.value, status: "draft" },
+                                })
+                              }
                               style={{
-                                width: 90,
-                                padding: "8px 10px",
+                                width: "100%",
+                                minHeight: 90,
+                                padding: 10,
                                 border: "1px solid #ddd",
                                 borderRadius: 8,
+                                resize: "vertical",
                               }}
                             />
-                            <div style={{ alignSelf: "center" }}>
-                              <ProgressBar value={item.score} />
+                            <div style={{ fontSize: 12, color: "#666", marginTop: 8 }}>
+                              {hasContent(item) ? "Wijzigingen staan als concept klaar." : "Nog geen docentinput."}
                             </div>
                           </div>
-                        </div>
-
-                        {/* DOCENT FEEDBACK */}
-                        <div>
-                          <div style={{ fontSize: 12, color: "#666" }}>
-                            Docent feedback
-                          </div>
-                          <textarea
-                            placeholder="Feedback op deze vraag (concept)…"
-                            value={item.feedback}
-                            onChange={(e) =>
-                              upsertTeacherItem({
-                                moment: m,
-                                themeId: theme.id,
-                                questionId: q.id,
-                                patch: { feedback: e.target.value, status: "draft" },
-                              })
-                            }
-                            style={{
-                              width: "100%",
-                              minHeight: 60,
-                              padding: 8,
-                              marginTop: 6,
-                              border: "1px solid #ddd",
-                              borderRadius: 8,
-                            }}
-                          />
-                        </div>
+                        )}
                       </div>
                     );
                   })}
