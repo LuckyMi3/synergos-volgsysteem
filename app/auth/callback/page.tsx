@@ -11,14 +11,33 @@ export default function AuthCallbackPage() {
   useEffect(() => {
     (async () => {
       try {
-        // Wisselt de ?code=... uit de magic link om voor een echte sessie
-        const { error } = await supabase.auth.exchangeCodeForSession(
-          window.location.href
-        );
+        const url = window.location.href;
 
-        if (error) {
-          setMsg("Inloggen mislukt: " + error.message);
-          return;
+        // 1) Als er een ?code=... is (PKCE), dan exchange
+        const hasCode = new URL(url).searchParams.get("code");
+        if (hasCode) {
+          const { error } = await supabase.auth.exchangeCodeForSession(url);
+          if (error) {
+            setMsg("Inloggen mislukt: " + error.message);
+            return;
+          }
+        } else {
+          // 2) Anders: implicit flow (tokens in #hash)
+          const { data, error } = await supabase.auth.getSessionFromUrl({
+            storeSession: true,
+          });
+
+          if (error) {
+            setMsg("Inloggen mislukt: " + error.message);
+            return;
+          }
+
+          if (!data.session) {
+            setMsg(
+              "Inloggen mislukt: geen sessie gevonden in de callback URL (hash leeg)."
+            );
+            return;
+          }
         }
 
         setMsg("Ingelogd. Doorsturen…");
