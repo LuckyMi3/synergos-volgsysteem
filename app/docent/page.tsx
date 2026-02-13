@@ -23,6 +23,15 @@ const MOCK_SCORES: Record<string, number> = {
   "M2-lichaamsbewustzijn-spanning_ontspanning": 6,
   "M3-lichaamsbewustzijn-spanning_ontspanning": 7,
 };
+function scoreLabel(value: number | null) {
+  if (value === null) return "–";
+
+  const labels = rubric1VO.scale.labels;
+
+  if (value <= 2) return `${labels[0]} (${value})`;
+  if (value <= 7) return `${labels[5]} (${value})`;
+  return `${labels[10]} (${value})`;
+}
 
 function ProgressBar({ value }: { value: number | null }) {
   const v = value ?? 0;
@@ -45,7 +54,7 @@ function ProgressBar({ value }: { value: number | null }) {
           }}
         />
       </div>
-      <div style={{ fontSize: 12 }}>{value ?? "–"}</div>
+      <div style={{ fontSize: 12 }}>{scoreLabel(value)}</div>
     </div>
   );
 }
