@@ -32,6 +32,13 @@ function scoreLabel(value: number | null) {
   if (value <= 7) return `${labels[5]} (${value})`;
   return `${labels[10]} (${value})`;
 }
+function scoreColor(value: number | null) {
+  if (value === null) return "#ccc";
+
+  if (value <= 2) return "#c0392b";   // rood
+  if (value <= 7) return "#e67e22";   // oranje
+  return "#27ae60";                   // groen
+}
 
 function ProgressBar({ value }: { value: number | null }) {
   const v = value ?? 0;
