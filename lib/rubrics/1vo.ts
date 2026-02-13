@@ -1,6 +1,6 @@
 export const rubric1VO = {
   id: "1vo",
-  title: "1VO – Basisjaar Haptonomie",
+  title: "1VO – Vakopleiding Haptonomie",
   themes: [
     {
       id: "lichaamsbewustzijn",
