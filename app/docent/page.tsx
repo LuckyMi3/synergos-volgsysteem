@@ -5,24 +5,50 @@ import { rubric1VO } from "../../lib/rubrics/1vo";
 
 type Moment = "M1" | "M2" | "M3";
 
-/**
- * MOCK data: zo doen we alsof we één student bekijken
- * Later komt dit uit Supabase / API
- */
 const MOCK_STUDENT = {
   id: "student-1",
   name: "Student Voorbeeld",
 };
 
 /**
- * MOCK scores per meetmoment
+ * Mock scores
  * key = `${moment}-${themeId}-${questionId}`
  */
 const MOCK_SCORES: Record<string, number> = {
   "M1-lichaamsbewustzijn-lichaam_signaleren": 4,
   "M2-lichaamsbewustzijn-lichaam_signaleren": 6,
   "M3-lichaamsbewustzijn-lichaam_signaleren": 8,
+
+  "M1-lichaamsbewustzijn-spanning_ontspanning": 5,
+  "M2-lichaamsbewustzijn-spanning_ontspanning": 6,
+  "M3-lichaamsbewustzijn-spanning_ontspanning": 7,
 };
+
+function ProgressBar({ value }: { value: number | null }) {
+  const v = value ?? 0;
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      <div
+        style={{
+          height: 10,
+          width: 120,
+          background: "#eee",
+          borderRadius: 4,
+          overflow: "hidden",
+        }}
+      >
+        <div
+          style={{
+            height: "100%",
+            width: `${(v / 10) * 100}%`,
+            background: "#111",
+          }}
+        />
+      </div>
+      <div style={{ fontSize: 12 }}>{value ?? "–"}</div>
+    </div>
+  );
+}
 
 export default function DocentPage() {
   const [openTheme, setOpenTheme] = useState<string | null>(null);
@@ -42,8 +68,18 @@ export default function DocentPage() {
     return MOCK_SCORES[key] ?? null;
   }
 
+  function themeAverage(themeId: string, moment: Moment) {
+    const scores = rubric1VO.themes
+      .find((t) => t.id === themeId)!
+      .questions.map((q) => getScore(moment, themeId, q.id))
+      .filter((v): v is number => v !== null);
+
+    if (!scores.length) return null;
+    return Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
+  }
+
   return (
-    <div style={{ padding: 32, maxWidth: 1000, margin: "0 auto" }}>
+    <div style={{ padding: 32, maxWidth: 1100, margin: "0 auto" }}>
       <h1>Docentoverzicht – 1VO Vakopleiding</h1>
 
       <div style={{ marginBottom: 24 }}>
@@ -56,7 +92,7 @@ export default function DocentPage() {
           style={{
             border: "1px solid #ddd",
             borderRadius: 8,
-            marginBottom: 16,
+            marginBottom: 20,
             overflow: "hidden",
           }}
         >
@@ -77,30 +113,39 @@ export default function DocentPage() {
 
           {openTheme === theme.id && (
             <div style={{ padding: 16 }}>
+              {/* THEMA GEMIDDELDE */}
+              <div style={{ marginBottom: 16 }}>
+                <strong>Thema – voortgang</strong>
+                {(["M1", "M2", "M3"] as Moment[]).map((m) => (
+                  <div key={m} style={{ marginTop: 6 }}>
+                    <div style={{ fontSize: 12 }}>{m}</div>
+                    <ProgressBar value={themeAverage(theme.id, m)} />
+                  </div>
+                ))}
+              </div>
+
               {/* VRAGEN */}
               {theme.questions.map((q) => (
                 <div
                   key={q.id}
                   style={{
                     padding: 12,
-                    borderBottom: "1px solid #eee",
-                    marginBottom: 12,
+                    borderTop: "1px solid #eee",
+                    marginTop: 12,
                   }}
                 >
                   <div style={{ marginBottom: 6 }}>
                     <strong>{q.text}</strong>
                   </div>
 
-                  <div style={{ display: "flex", gap: 16, marginBottom: 8 }}>
-                    {(["M1", "M2", "M3"] as Moment[]).map((m) => (
-                      <div key={m}>
-                        <div style={{ fontSize: 12 }}>{m}</div>
-                        <div style={{ fontSize: 18 }}>
-                          {getScore(m, theme.id, q.id) ?? "–"}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+                  {(["M1", "M2", "M3"] as Moment[]).map((m) => (
+                    <div key={m} style={{ marginBottom: 4 }}>
+                      <div style={{ fontSize: 12 }}>{m}</div>
+                      <ProgressBar
+                        value={getScore(m, theme.id, q.id)}
+                      />
+                    </div>
+                  ))}
 
                   <textarea
                     placeholder="Feedback op deze vraag…"
@@ -115,13 +160,14 @@ export default function DocentPage() {
                       width: "100%",
                       minHeight: 60,
                       padding: 8,
+                      marginTop: 8,
                     }}
                   />
                 </div>
               ))}
 
               {/* THEMA FEEDBACK */}
-              <div style={{ marginTop: 16 }}>
+              <div style={{ marginTop: 20 }}>
                 <strong>Feedback op thema</strong>
                 <textarea
                   placeholder="Overkoepelende feedback op dit thema…"
