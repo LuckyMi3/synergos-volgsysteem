@@ -1,6 +1,7 @@
+import RoleSwitcher from "../components/RoleSwitcher";
+
 export const metadata = {
   title: "Synergos Volgsysteem",
-  description: "Volgsysteem Vakopleiding Haptonomie"
 };
 
 export default function RootLayout({
@@ -11,6 +12,7 @@ export default function RootLayout({
   return (
     <html lang="nl">
       <body style={{ margin: 0, fontFamily: "system-ui, sans-serif" }}>
+        <RoleSwitcher />
         {children}
       </body>
     </html>
