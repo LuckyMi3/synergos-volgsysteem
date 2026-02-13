@@ -43,4 +43,6 @@ function makeKey(args: {
 function scoreLabel(value: number) {
   const labels = rubric1VO.scale.labels;
   if (value <= 2) return labels[0];
-  if
+  if (value <= 7) return labels[5];
+  return labels[10];
+}
