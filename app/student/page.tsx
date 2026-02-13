@@ -99,15 +99,19 @@ export default function StudentPage() {
 
                     {/* Huidige status */}
                     <div
-                      style={{
-                        fontSize: 13,
-                        fontWeight: 500,
-                        color: scoreColor(value),
-                        marginBottom: 8,
-                      }}
-                    >
-                      Jouw huidige inschatting: {scoreLabel(value)}
-                    </div>
+  style={{
+    fontSize: 13,
+    fontWeight: 500,
+    marginBottom: 8,
+    color: "#000",
+  }}
+>
+  Jouw huidige inschatting:{" "}
+  <span style={{ color: scoreColor(value) }}>
+    {scoreLabel(value)}
+  </span>
+</div>
+
 
                     {/* Slider */}
                     <input
