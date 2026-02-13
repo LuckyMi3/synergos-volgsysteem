@@ -13,9 +13,9 @@ function scoreLabel(value: number) {
 }
 
 function scoreColor(value: number) {
-  if (value <= 2) return "#c0392b"; // red
-  if (value <= 7) return "#e67e22"; // orange
-  return "#27ae60"; // green
+  if (value <= 2) return "#c0392b"; // rood
+  if (value <= 7) return "#e67e22"; // oranje
+  return "#27ae60"; // groen
 }
 
 function ScaleMarkers() {
@@ -48,6 +48,7 @@ export default function StudentPage() {
     <div style={{ padding: 32, maxWidth: 900, margin: "0 auto" }}>
       <h1>1VO - Vakopleiding Haptonomie</h1>
 
+      {/* Meetmoment */}
       <div style={{ marginBottom: 24 }}>
         <strong>Meetmoment:</strong>{" "}
         {(["M1", "M2", "M3"] as Moment[]).map((m) => (
@@ -68,6 +69,7 @@ export default function StudentPage() {
         ))}
       </div>
 
+      {/* Thema's */}
       {rubric1VO.themes.map((theme) => (
         <div
           key={theme.id}
@@ -97,51 +99,25 @@ export default function StudentPage() {
                 const value = scores[key] ?? 5;
 
                 return (
-                  <div key={key} style={{ marginBottom: 26 }}>
-                    <div style={{ marginBottom: 6 }}>{q.text}</div>
+                  <div
+                    key={key}
+                    style={{
+                      marginBottom: 30,
+                      paddingBottom: 16,
+                      borderBottom: "1px solid #eee",
+                    }}
+                  >
+                    {/* Vraag */}
+                    <div style={{ marginBottom: 4 }}>
+                      {q.text}
+                    </div>
 
-                    <input
-                      type="range"
-                      min={rubric1VO.scale.min}
-                      max={rubric1VO.scale.max}
-                      value={value}
-                      onChange={(e) => setScore(key, Number(e.target.value))}
-                      style={{ width: "100%" }}
-                    />
-
-                    <ScaleMarkers />
-
+                    {/* Huidige status (expliciet gekoppeld aan de vraag) */}
                     <div
                       style={{
-                        marginTop: 6,
                         fontSize: 13,
                         fontWeight: 500,
                         color: scoreColor(value),
+                        marginBottom: 8,
                       }}
                     >
-                      {scoreLabel(value)}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      ))}
-
-      <button
-        onClick={() => alert("Opgeslagen (mock)")}
-        style={{
-          marginTop: 24,
-          padding: "10px 20px",
-          background: "#111",
-          color: "#fff",
-          border: "none",
-          borderRadius: 8,
-        }}
-      >
-        Opslaan
-      </button>
-    </div>
-  );
-}
