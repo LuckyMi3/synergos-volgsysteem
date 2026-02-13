@@ -18,23 +18,6 @@ function scoreColor(value: number) {
   return "#27ae60"; // groen
 }
 
-function ScaleMarkers() {
-  return (
-    <div
-      style={{
-        display: "flex",
-        justifyContent: "space-between",
-        fontSize: 12,
-        marginTop: 6,
-      }}
-    >
-      <span style={{ color: "#c0392b" }}>onbekwaam / niet eigen</span>
-      <span style={{ color: "#e67e22" }}>in ontwikkeling</span>
-      <span style={{ color: "#27ae60" }}>bekwaam / eigen</span>
-    </div>
-  );
-}
-
 export default function StudentPage() {
   const [moment, setMoment] = useState<Moment>("M1");
   const [openTheme, setOpenTheme] = useState<string | null>(null);
@@ -81,7 +64,9 @@ export default function StudentPage() {
           }}
         >
           <div
-            onClick={() => setOpenTheme(openTheme === theme.id ? null : theme.id)}
+            onClick={() =>
+              setOpenTheme(openTheme === theme.id ? null : theme.id)
+            }
             style={{
               padding: 16,
               background: "#f5f5f5",
@@ -102,7 +87,7 @@ export default function StudentPage() {
                   <div
                     key={key}
                     style={{
-                      marginBottom: 30,
+                      marginBottom: 28,
                       paddingBottom: 16,
                       borderBottom: "1px solid #eee",
                     }}
@@ -112,7 +97,7 @@ export default function StudentPage() {
                       {q.text}
                     </div>
 
-                    {/* Huidige status (expliciet gekoppeld aan de vraag) */}
+                    {/* Huidige status */}
                     <div
                       style={{
                         fontSize: 13,
@@ -121,3 +106,61 @@ export default function StudentPage() {
                         marginBottom: 8,
                       }}
                     >
+                      Jouw huidige inschatting: {scoreLabel(value)}
+                    </div>
+
+                    {/* Slider */}
+                    <input
+                      type="range"
+                      min={rubric1VO.scale.min}
+                      max={rubric1VO.scale.max}
+                      value={value}
+                      onChange={(e) =>
+                        setScore(key, Number(e.target.value))
+                      }
+                      style={{ width: "100%" }}
+                    />
+
+                    {/* Schaal-ankers */}
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        fontSize: 12,
+                        marginTop: 6,
+                      }}
+                    >
+                      <span style={{ color: "#c0392b" }}>
+                        onbekwaam / niet eigen
+                      </span>
+                      <span style={{ color: "#e67e22" }}>
+                        in ontwikkeling
+                      </span>
+                      <span style={{ color: "#27ae60" }}>
+                        bekwaam / eigen
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      ))}
+
+      <button
+        onClick={() => alert("Opgeslagen (mock)")}
+        style={{
+          marginTop: 24,
+          padding: "10px 20px",
+          background: "#111",
+          color: "#fff",
+          border: "none",
+          borderRadius: 8,
+        }}
+      >
+        Opslaan
+      </button>
+    </div>
+  );
+}
