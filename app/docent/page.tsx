@@ -57,7 +57,7 @@ function ProgressBar({ value }: { value: number | null }) {
           style={{
             height: "100%",
             width: `${(v / 10) * 100}%`,
-            background: "#111",
+            background: scoreColor(value),
           }}
         />
       </div>
