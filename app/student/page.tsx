@@ -19,6 +19,33 @@ function scoreColor(value: number) {
   return "#27ae60";                   // groen
 }
 
+/**
+ * Visuele ankers voor de schaal
+ * Altijd zichtbaar, vóórdat de student schuift
+ */
+function ScaleMarkers() {
+  return (
+    <div
+      style={{
+        display: "flex",
+        justifyContent: "space-between",
+        fontSize: 12,
+        marginTop: 6,
+      }}
+    >
+      <span style={{ color: "#c0392b" }}>
+        onbekwaam / niet eigen
+      </span>
+      <span style={{ color: "#e67e22" }}>
+        in ontwikkeling
+      </span>
+      <span style={{ color: "#27ae60" }}>
+        bekwaam / eigen
+      </span>
+    </div>
+  );
+}
+
 export default function StudentPage() {
   const [moment, setMoment] = useState<Moment>("M1");
   const [openTheme, setOpenTheme] = useState<string | null>(null);
@@ -53,83 +80,4 @@ export default function StudentPage() {
         ))}
       </div>
 
-      {/* Accordion per thema */}
-      {rubric1VO.themes.map((theme) => (
-        <div
-          key={theme.id}
-          style={{
-            border: "1px solid #ddd",
-            borderRadius: 8,
-            marginBottom: 12,
-            overflow: "hidden",
-          }}
-        >
-          <div
-            onClick={() =>
-              setOpenTheme(openTheme === theme.id ? null : theme.id)
-            }
-            style={{
-              padding: 16,
-              background: "#f5f5f5",
-              cursor: "pointer",
-              fontWeight: 600,
-            }}
-          >
-            {theme.title}
-          </div>
-
-          {openTheme === theme.id && (
-            <div style={{ padding: 16 }}>
-              {theme.questions.map((q) => {
-                const key = `${moment}-${theme.id}-${q.id}`;
-                const value = scores[key] ?? 5;
-
-                return (
-                  <div key={key} style={{ marginBottom: 22 }}>
-                    <div style={{ marginBottom: 6 }}>{q.text}</div>
-
-                    <input
-                      type="range"
-                      min={rubric1VO.scale.min}
-                      max={rubric1VO.scale.max}
-                      value={value}
-                      onChange={(e) =>
-                        setScore(key, Number(e.target.value))
-                      }
-                      style={{ width: "100%" }}
-                    />
-
-                    <div
-                      style={{
-                        marginTop: 4,
-                        fontSize: 13,
-                        fontWeight: 500,
-                        color: scoreColor(value),
-                      }}
-                    >
-                      {scoreLabel(value)}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      ))}
-
-      <button
-        onClick={() => alert("Opgeslagen (mock)")}
-        style={{
-          marginTop: 24,
-          padding: "10px 20px",
-          background: "#111",
-          color: "#fff",
-          border: "none",
-          borderRadius: 8,
-        }}
-      >
-        Opslaan
-      </button>
-    </div>
-  );
-}
+      {/* Accordio*
