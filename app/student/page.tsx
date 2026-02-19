@@ -1,44 +1,24 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { rubric1VO } from "../../lib/rubrics/1vo";
+import { rubric1VO } from "@/lib/rubrics/1vo";
 
 type Moment = "M1" | "M2" | "M3";
-type Status = "draft" | "published";
 
-const MOCK_STUDENT = {
-  id: "student-1",
-  name: "Student Voorbeeld",
-};
+const ACTIVE_STUDENT_ID = "cmlqjz0vg0006geb8ucgsfxid";
+const ACTIVE_RUBRIC_KEY = "1vo";
 
-// Moet matchen met docentpage mock teacher id (voor nu)
-const MOCK_TEACHER = {
-  id: "teacher-1",
-  name: "Docent Voorbeeld",
-};
-
-const STORAGE_KEY = "synergos_teacher_review_v1";
-
-type TeacherItem = {
-  score: number | null;
-  feedback: string;
-  status: Status;
-  updatedAt: number;
-  publishedAt?: number;
-};
-
-type TeacherStore = Record<string, TeacherItem>;
-
-function makeKey(args: {
-  studentId: string;
+type PublishedTeacherReview = {
+  id: string;
+  assessmentId: string;
   teacherId: string;
-  moment: Moment;
-  themeId: string;
-  questionId: string;
-}) {
-  const { studentId, teacherId, moment, themeId, questionId } = args;
-  return `${studentId}__${teacherId}__${moment}__${themeId}__${questionId}`;
-}
+  correctedScore: number | null;
+  feedback: string | null;
+  status: "PUBLISHED";
+  publishedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
 
 function scoreLabel(value: number) {
   const labels = rubric1VO.scale.labels;
@@ -48,9 +28,9 @@ function scoreLabel(value: number) {
 }
 
 function scoreColor(value: number) {
-  if (value <= 2) return "#c0392b"; // rood
-  if (value <= 7) return "#e67e22"; // oranje
-  return "#27ae60"; // groen
+  if (value <= 2) return "#c0392b";
+  if (value <= 7) return "#e67e22";
+  return "#27ae60";
 }
 
 function teacherScoreLabel(value: number | null) {
@@ -69,60 +49,159 @@ export default function Page() {
   const [moment, setMoment] = useState<Moment>("M1");
   const [openTheme, setOpenTheme] = useState<string | null>(null);
 
-  // student scores (mock)
+  // scores per UI-key: `${moment}-${themeId}-${questionId}`
   const [scores, setScores] = useState<Record<string, number>>({});
 
-  // docentstore (published items komen hieruit)
-  const [teacherStore, setTeacherStore] = useState<TeacherStore>({});
+  // statusmeldingen
+  const [dbStatus, setDbStatus] = useState<string | null>(null);
 
-  // dropdown open/close per vraag (per moment)
-  const [openFeedback, setOpenFeedback] = useState<Record<string, boolean>>({});
+  // ensured assessmentId voor huidig moment
+  const [assessmentId, setAssessmentId] = useState<string | null>(null);
+
+  // published docent review (1x per assessment/moment)
+  const [publishedReview, setPublishedReview] =
+    useState<PublishedTeacherReview | null>(null);
+
+  // feedback open/closed (1x)
+  const [reviewOpen, setReviewOpen] = useState(false);
 
   function setScore(key: string, value: number) {
     setScores((prev) => ({ ...prev, [key]: value }));
   }
 
-  function refreshTeacherStore() {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) {
-        setTeacherStore({});
-        return;
+  useEffect(() => {
+    let cancelled = false;
+
+    async function ensureAndLoad() {
+      setDbStatus(null);
+      setAssessmentId(null);
+      setPublishedReview(null);
+      setReviewOpen(false);
+
+      try {
+        // 1) ensure assessment
+        const ensureRes = await fetch("/api/assessments/ensure", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            studentId: ACTIVE_STUDENT_ID,
+            moment,
+            rubricKey: ACTIVE_RUBRIC_KEY,
+          }),
+        });
+
+        if (!ensureRes.ok) {
+          setDbStatus(`Assessment ensure faalde (${ensureRes.status}).`);
+          return;
+        }
+
+        const ensured = await ensureRes.json();
+        const ensuredId = ensured?.id as string | undefined;
+
+        if (!ensuredId) {
+          setDbStatus("Assessment ensure gaf geen id terug.");
+          return;
+        }
+
+        if (cancelled) return;
+        setAssessmentId(ensuredId);
+
+        // 2) load scores
+        const res = await fetch(
+          `/api/scores?assessmentId=${encodeURIComponent(ensuredId)}`
+        );
+        if (!res.ok) {
+          setDbStatus(`Scores laden faalde (${res.status}).`);
+          return;
+        }
+
+        const rows: Array<{ themeId: string; questionId: string; score: number }> =
+          await res.json();
+
+        if (cancelled) return;
+
+        setScores(() => {
+          const next: Record<string, number> = {};
+          for (const r of rows) {
+            const k = `${moment}-${r.themeId}-${r.questionId}`;
+            next[k] = r.score;
+          }
+          return next;
+        });
+
+        // 3) load published teacher review (student ziet alleen PUBLISHED)
+        const reviewRes = await fetch(
+          `/api/teacher-reviews/published?assessmentId=${encodeURIComponent(
+            ensuredId
+          )}`
+        );
+
+        if (reviewRes.ok) {
+          const review = (await reviewRes.json()) as PublishedTeacherReview | null;
+          if (!cancelled) setPublishedReview(review);
+        }
+
+        setDbStatus(`Assessment ensured + scores geladen voor ${moment}.`);
+      } catch {
+        if (!cancelled) setDbStatus("Ensure/laden faalde (netwerk/exception).");
       }
-      const parsed = JSON.parse(raw) as TeacherStore;
-      setTeacherStore(parsed ?? {});
+    }
+
+    ensureAndLoad();
+    return () => {
+      cancelled = true;
+    };
+  }, [moment]);
+
+  async function refreshPublishedReview() {
+    if (!assessmentId) return;
+    try {
+      const r = await fetch(
+        `/api/teacher-reviews/published?assessmentId=${encodeURIComponent(
+          assessmentId
+        )}`
+      );
+      if (r.ok) {
+        const review = (await r.json()) as PublishedTeacherReview | null;
+        setPublishedReview(review);
+      }
     } catch {
-      setTeacherStore({});
+      // best-effort
     }
   }
 
-  // init load
-  useEffect(() => {
-    refreshTeacherStore();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  function getPublishedTeacherItem(args: {
-    moment: Moment;
+  async function saveScoreToDb(args: {
     themeId: string;
     questionId: string;
-  }): TeacherItem | null {
-    const key = makeKey({
-      studentId: MOCK_STUDENT.id,
-      teacherId: MOCK_TEACHER.id,
-      moment: args.moment,
-      themeId: args.themeId,
-      questionId: args.questionId,
-    });
+    value: number;
+  }) {
+    if (!assessmentId) {
+      setDbStatus(`Kan niet opslaan: assessmentId ontbreekt (${moment}).`);
+      return;
+    }
 
-    const item = teacherStore[key];
-    if (!item) return null;
-    if (item.status !== "published") return null;
-    return item;
-  }
+    try {
+      const res = await fetch("/api/score", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          assessmentId,
+          themeId: args.themeId,
+          questionId: args.questionId,
+          score: args.value,
+          comment: null,
+        }),
+      });
 
-  function toggleFeedback(rowKey: string) {
-    setOpenFeedback((prev) => ({ ...prev, [rowKey]: !(prev[rowKey] ?? false) }));
+      if (!res.ok) {
+        setDbStatus(`Opslaan faalde (${res.status}).`);
+        return;
+      }
+
+      setDbStatus(`Opgeslagen in database (${moment}).`);
+    } catch {
+      setDbStatus("Opslaan faalde (netwerk/exception).");
+    }
   }
 
   return (
@@ -130,7 +209,7 @@ export default function Page() {
       <h1>1VO - Vakopleiding Haptonomie</h1>
 
       <div style={{ marginBottom: 16 }}>
-        <strong>Student:</strong> {MOCK_STUDENT.name}
+        <strong>Student:</strong> Student Voorbeeld
       </div>
 
       {/* Meetmoment + refresh */}
@@ -157,7 +236,7 @@ export default function Page() {
         </div>
 
         <button
-          onClick={refreshTeacherStore}
+          onClick={refreshPublishedReview}
           style={{
             marginLeft: "auto",
             padding: "8px 12px",
@@ -173,7 +252,124 @@ export default function Page() {
         </button>
       </div>
 
-      {/* Thema's */}
+      {/* DB status */}
+      <div style={{ marginBottom: 16, fontSize: 12, color: "#666" }}>
+        <div>
+          <strong>AssessmentId ({moment}):</strong>{" "}
+          <span style={{ fontFamily: "monospace" }}>
+            {assessmentId ?? "— (aanmaken/laden...)"}
+          </span>
+        </div>
+        {dbStatus ? <div style={{ marginTop: 6 }}>{dbStatus}</div> : null}
+      </div>
+
+      {/* ✅ Docentreview 1x per meetmoment */}
+      <div style={{ marginBottom: 18 }}>
+        <div
+          style={{
+            padding: 14,
+            border: "1px solid #eee",
+            borderRadius: 12,
+            background: "#fafafa",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ fontWeight: 700 }}>Docent terugkoppeling ({moment})</div>
+            <div style={{ marginLeft: "auto", fontSize: 12, color: "#666" }}>
+              {publishedReview ? "gepubliceerd" : "nog niet gepubliceerd"}
+            </div>
+          </div>
+
+          {publishedReview ? (
+            <>
+              <div style={{ fontSize: 13, marginTop: 10 }}>
+                Docent correctie (overall):{" "}
+                <span
+                  style={{
+                    color: teacherScoreColor(publishedReview.correctedScore),
+                    fontWeight: 600,
+                  }}
+                >
+                  {teacherScoreLabel(publishedReview.correctedScore)}
+                </span>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setReviewOpen((v) => !v)}
+                style={{
+                  marginTop: 10,
+                  padding: "6px 10px",
+                  background: "#fff",
+                  border: "1px solid #ddd",
+                  borderRadius: 8,
+                  cursor: "pointer",
+                  fontSize: 12,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 8,
+                }}
+              >
+                {reviewOpen ? "▾" : "▸"} Docent feedback
+                {publishedReview.feedback?.trim() ? (
+                  <span
+                    style={{
+                      fontSize: 12,
+                      padding: "2px 8px",
+                      borderRadius: 999,
+                      background: "#f2f2f2",
+                      border: "1px solid #ddd",
+                      color: "#444",
+                    }}
+                  >
+                    beschikbaar
+                  </span>
+                ) : (
+                  <span style={{ fontSize: 12, color: "#666" }}>geen</span>
+                )}
+              </button>
+
+              {reviewOpen && (
+                <div style={{ marginTop: 10 }}>
+                  {publishedReview.feedback?.trim() ? (
+                    <div
+                      style={{
+                        whiteSpace: "pre-wrap",
+                        fontSize: 13,
+                        lineHeight: 1.45,
+                        padding: 12,
+                        background: "#fff",
+                        border: "1px solid #eee",
+                        borderRadius: 10,
+                      }}
+                    >
+                      {publishedReview.feedback}
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: 13, color: "#666", marginTop: 6 }}>
+                      Er is geen tekstfeedback gepubliceerd.
+                    </div>
+                  )}
+
+                  {publishedReview.publishedAt ? (
+                    <div style={{ fontSize: 12, color: "#666", marginTop: 8 }}>
+                      Gepubliceerd op{" "}
+                      {new Date(publishedReview.publishedAt).toLocaleString("nl-NL")} door{" "}
+                      {publishedReview.teacherId}
+                    </div>
+                  ) : null}
+                </div>
+              )}
+            </>
+          ) : (
+            <div style={{ fontSize: 13, color: "#666", marginTop: 8 }}>
+              Er is nog geen gepubliceerde docentreview voor dit meetmoment.
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Thema's (zonder docentblok per vraag) */}
       {rubric1VO.themes.map((theme) => (
         <div
           key={theme.id}
@@ -202,15 +398,6 @@ export default function Page() {
                 const key = `${moment}-${theme.id}-${q.id}`;
                 const value = scores[key] ?? 5;
 
-                const published = getPublishedTeacherItem({
-                  moment,
-                  themeId: theme.id,
-                  questionId: q.id,
-                });
-
-                const rowKey = `${moment}__${theme.id}__${q.id}`;
-                const isOpen = openFeedback[rowKey] ?? false;
-
                 return (
                   <div
                     key={key}
@@ -235,7 +422,16 @@ export default function Page() {
                       min={rubric1VO.scale.min}
                       max={rubric1VO.scale.max}
                       value={value}
-                      onChange={(e) => setScore(key, Number(e.target.value))}
+                      onChange={(e) => {
+                        const newValue = Number(e.target.value);
+                        setScore(key, newValue);
+
+                        saveScoreToDb({
+                          themeId: theme.id,
+                          questionId: q.id,
+                          value: newValue,
+                        });
+                      }}
                       style={{ width: "100%" }}
                     />
 
@@ -252,95 +448,6 @@ export default function Page() {
                       <span style={{ color: "#e67e22" }}>in ontwikkeling</span>
                       <span style={{ color: "#27ae60" }}>bekwaam / eigen</span>
                     </div>
-
-                    {/* Docentlaag (alleen published) */}
-                    <div style={{ marginTop: 14 }}>
-                      <div
-                        style={{
-                          padding: 12,
-                          border: "1px solid #eee",
-                          borderRadius: 10,
-                          background: "#fafafa",
-                        }}
-                      >
-                        <div style={{ fontSize: 12, color: "#666", marginBottom: 6 }}>
-                          Docent terugkoppeling ({moment})
-                        </div>
-
-                        <div style={{ fontSize: 13, marginBottom: 8 }}>
-                          Docent correctie:{" "}
-                          <span style={{ color: teacherScoreColor(published?.score ?? null) }}>
-                            {teacherScoreLabel(published?.score ?? null)}
-                          </span>
-                        </div>
-
-                        <button
-                          type="button"
-                          onClick={() => toggleFeedback(rowKey)}
-                          style={{
-                            padding: "6px 10px",
-                            background: "#fff",
-                            border: "1px solid #ddd",
-                            borderRadius: 8,
-                            cursor: "pointer",
-                            fontSize: 12,
-                            display: "inline-flex",
-                            alignItems: "center",
-                            gap: 8,
-                          }}
-                        >
-                          {isOpen ? "▾" : "▸"} Docent feedback
-                          {published?.feedback?.trim() ? (
-                            <span
-                              style={{
-                                fontSize: 12,
-                                padding: "2px 8px",
-                                borderRadius: 999,
-                                background: "#f2f2f2",
-                                border: "1px solid #ddd",
-                                color: "#444",
-                              }}
-                            >
-                              beschikbaar
-                            </span>
-                          ) : (
-                            <span style={{ fontSize: 12, color: "#666" }}>geen</span>
-                          )}
-                        </button>
-
-                        {isOpen && (
-                          <div style={{ marginTop: 10 }}>
-                            {published?.feedback?.trim() ? (
-                              <div
-                                style={{
-                                  whiteSpace: "pre-wrap",
-                                  fontSize: 13,
-                                  lineHeight: 1.45,
-                                  padding: 12,
-                                  background: "#fff",
-                                  border: "1px solid #eee",
-                                  borderRadius: 10,
-                                }}
-                              >
-                                {published.feedback}
-                              </div>
-                            ) : (
-                              <div style={{ fontSize: 13, color: "#666", marginTop: 6 }}>
-                                Er is (nog) geen gepubliceerde feedback voor deze vraag.
-                              </div>
-                            )}
-
-                            {published?.publishedAt ? (
-                              <div style={{ fontSize: 12, color: "#666", marginTop: 8 }}>
-                                Gepubliceerd op{" "}
-                                {new Date(published.publishedAt).toLocaleString("nl-NL")} door{" "}
-                                {MOCK_TEACHER.name}
-                              </div>
-                            ) : null}
-                          </div>
-                        )}
-                      </div>
-                    </div>
                   </div>
                 );
               })}
@@ -348,21 +455,6 @@ export default function Page() {
           )}
         </div>
       ))}
-
-      <button
-        onClick={() => alert("Opgeslagen (mock)")}
-        style={{
-          marginTop: 24,
-          padding: "10px 20px",
-          background: "#111",
-          color: "#fff",
-          border: "none",
-          borderRadius: 8,
-          cursor: "pointer",
-        }}
-      >
-        Opslaan
-      </button>
     </div>
   );
 }

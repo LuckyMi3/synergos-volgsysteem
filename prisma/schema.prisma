@@ -1,0 +1,139 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Student {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now())
+
+  assessments Assessment[]
+  cohorts     CohortStudent[] // ✅ inverse relation voor CohortStudent.student
+}
+
+model Assessment {
+  id        String   @id @default(cuid())
+  studentId String
+  moment    String // "M1" | "M2" | "M3"
+  rubricKey String // "1VO"
+  status    String   @default("draft")
+  createdAt DateTime @default(now())
+
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  scores  Score[]
+
+  // ✅ 0..1 teacher review per assessment
+  review TeacherReview?
+
+  @@unique([studentId, moment, rubricKey])
+}
+
+model Score {
+  id           String   @id @default(cuid())
+  assessmentId String
+  themeId      String
+  questionId   String
+  score        Int
+  comment      String?  @db.Text
+  updatedAt    DateTime @updatedAt
+
+  assessment Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+
+  @@unique([assessmentId, themeId, questionId])
+}
+
+// ✅ status voor docent review
+enum ReviewStatus {
+  DRAFT
+  PUBLISHED
+}
+
+// ✅ TeacherReview model (1 per assessment)
+model TeacherReview {
+  id String @id @default(cuid())
+
+  assessmentId String     @unique
+  assessment   Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+
+  teacherId      String
+  correctedScore Int?
+  feedback       String? @db.Text
+
+  status      ReviewStatus @default(DRAFT)
+  publishedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([teacherId])
+  @@index([status])
+}
+
+// ✅ Cohort (bijv. "1VO 2026")
+model Cohort {
+  id        String   @id @default(cuid())
+  title     String // bijv. "1VO 2026"
+  rubricKey String // bijv. "1vo"
+  year      Int // bijv. 2026
+  createdAt DateTime @default(now())
+
+  students CohortStudent[]
+  teachers CohortTeacher[]
+
+  @@unique([rubricKey, year])
+}
+
+// ✅ Join table: student ↔ cohort
+model CohortStudent {
+  id        String   @id @default(cuid())
+  cohortId  String
+  studentId String
+  createdAt DateTime @default(now())
+
+  cohort  Cohort  @relation(fields: [cohortId], references: [id], onDelete: Cascade)
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([cohortId, studentId])
+  @@index([studentId])
+  @@index([cohortId])
+}
+
+// ✅ Join table: teacher ↔ cohort (teacherId is string in v1)
+model CohortTeacher {
+  id        String   @id @default(cuid())
+  cohortId  String
+  teacherId String
+  createdAt DateTime @default(now())
+
+  cohort Cohort @relation(fields: [cohortId], references: [id], onDelete: Cascade)
+
+  @@unique([cohortId, teacherId])
+  @@index([teacherId])
+  @@index([cohortId])
+}
+
+model TeacherScore {
+  id String @id @default(cuid())
+
+  assessmentId String
+  teacherId    String
+
+  themeId    String
+  questionId String
+
+  correctedScore Int?
+  feedback       String? @db.Text
+
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+
+  // 1 docentscore per vraag per assessment per teacher
+  @@unique([assessmentId, teacherId, themeId, questionId])
+  @@index([assessmentId])
+  @@index([teacherId])
+}
