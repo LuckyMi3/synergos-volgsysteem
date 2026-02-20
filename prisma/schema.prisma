@@ -13,6 +13,7 @@ datasource db {
 
 model Student {
   id        String   @id @default(cuid())
+  apolloId  String?  @unique // externe sleutel (Apollo)
   name      String
   createdAt DateTime @default(now())
 
@@ -26,6 +27,7 @@ model Student {
 
 model Teacher {
   id        String   @id @default(cuid())
+  apolloId  String?  @unique // externe sleutel (Apollo)
   name      String
   email     String?  @unique
   createdAt DateTime @default(now())
@@ -43,7 +45,7 @@ model Assessment {
   id        String   @id @default(cuid())
   studentId String
   moment    String   // "M1" | "M2" | "M3"
-  rubricKey String   // "1VO"
+  rubricKey String   // "1VO" | "2VO" | "3VO"
   status    String   @default("draft")
   createdAt DateTime @default(now())
 
@@ -114,8 +116,9 @@ model TeacherReview {
 
 model Cohort {
   id        String   @id @default(cuid())
+  apolloId  String?  @unique // externe sleutel (Apollo)
   title     String   // "1VO 2026"
-  rubricKey String   // "1vo"
+  rubricKey String   // "1vo" | "2vo" | "3vo"
   year      Int
   createdAt DateTime @default(now())
 
