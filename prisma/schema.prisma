@@ -7,31 +7,57 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+/* =========================
+   STUDENT
+========================= */
+
 model Student {
   id        String   @id @default(cuid())
   name      String
   createdAt DateTime @default(now())
 
   assessments Assessment[]
-  cohorts     CohortStudent[] // ✅ inverse relation voor CohortStudent.student
+  cohorts     CohortStudent[]
 }
+
+/* =========================
+   TEACHER (docentenpool)
+========================= */
+
+model Teacher {
+  id        String   @id @default(cuid())
+  name      String
+  email     String?  @unique
+  createdAt DateTime @default(now())
+
+  cohorts CohortTeacher[]
+  reviews TeacherReview[]
+  scores  TeacherScore[]
+}
+
+/* =========================
+   ASSESSMENT
+========================= */
 
 model Assessment {
   id        String   @id @default(cuid())
   studentId String
-  moment    String // "M1" | "M2" | "M3"
-  rubricKey String // "1VO"
+  moment    String   // "M1" | "M2" | "M3"
+  rubricKey String   // "1VO"
   status    String   @default("draft")
   createdAt DateTime @default(now())
 
   student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
   scores  Score[]
 
-  // ✅ 0..1 teacher review per assessment
   review TeacherReview?
 
   @@unique([studentId, moment, rubricKey])
 }
+
+/* =========================
+   STUDENT SCORE
+========================= */
 
 model Score {
   id           String   @id @default(cuid())
@@ -47,20 +73,28 @@ model Score {
   @@unique([assessmentId, themeId, questionId])
 }
 
-// ✅ status voor docent review
+/* =========================
+   REVIEW STATUS ENUM
+========================= */
+
 enum ReviewStatus {
   DRAFT
   PUBLISHED
 }
 
-// ✅ TeacherReview model (1 per assessment)
+/* =========================
+   TEACHER REVIEW (1 per assessment)
+========================= */
+
 model TeacherReview {
   id String @id @default(cuid())
 
   assessmentId String     @unique
   assessment   Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
 
-  teacherId      String
+  teacherId String
+  teacher   Teacher @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+
   correctedScore Int?
   feedback       String? @db.Text
 
@@ -74,12 +108,15 @@ model TeacherReview {
   @@index([status])
 }
 
-// ✅ Cohort (bijv. "1VO 2026")
+/* =========================
+   COHORT (bijv. 1VO 2026)
+========================= */
+
 model Cohort {
   id        String   @id @default(cuid())
-  title     String // bijv. "1VO 2026"
-  rubricKey String // bijv. "1vo"
-  year      Int // bijv. 2026
+  title     String   // "1VO 2026"
+  rubricKey String   // "1vo"
+  year      Int
   createdAt DateTime @default(now())
 
   students CohortStudent[]
@@ -88,7 +125,10 @@ model Cohort {
   @@unique([rubricKey, year])
 }
 
-// ✅ Join table: student ↔ cohort
+/* =========================
+   STUDENT ↔ COHORT
+========================= */
+
 model CohortStudent {
   id        String   @id @default(cuid())
   cohortId  String
@@ -103,25 +143,34 @@ model CohortStudent {
   @@index([cohortId])
 }
 
-// ✅ Join table: teacher ↔ cohort (teacherId is string in v1)
+/* =========================
+   TEACHER ↔ COHORT
+========================= */
+
 model CohortTeacher {
   id        String   @id @default(cuid())
   cohortId  String
   teacherId String
   createdAt DateTime @default(now())
 
-  cohort Cohort @relation(fields: [cohortId], references: [id], onDelete: Cascade)
+  cohort  Cohort  @relation(fields: [cohortId], references: [id], onDelete: Cascade)
+  teacher Teacher @relation(fields: [teacherId], references: [id], onDelete: Cascade)
 
   @@unique([cohortId, teacherId])
   @@index([teacherId])
   @@index([cohortId])
 }
 
+/* =========================
+   PER-QUESTION DOCENTCORRECTIE
+========================= */
+
 model TeacherScore {
   id String @id @default(cuid())
 
   assessmentId String
   teacherId    String
+  teacher      Teacher @relation(fields: [teacherId], references: [id], onDelete: Cascade)
 
   themeId    String
   questionId String
@@ -132,7 +181,6 @@ model TeacherScore {
   updatedAt DateTime @updatedAt
   createdAt DateTime @default(now())
 
-  // 1 docentscore per vraag per assessment per teacher
   @@unique([assessmentId, teacherId, themeId, questionId])
   @@index([assessmentId])
   @@index([teacherId])

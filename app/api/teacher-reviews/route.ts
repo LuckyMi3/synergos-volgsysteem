@@ -27,6 +27,22 @@ export async function POST(req: Request) {
     );
   }
 
+  // 🔹 NIEUW: check of assessment bestaat
+  const assessment = await prisma.assessment.findUnique({
+    where: { id: assessmentId },
+  });
+
+  if (!assessment) {
+    return NextResponse.json(
+      {
+        code: "ASSESSMENT_NOT_FOUND",
+        message:
+          "Deze student heeft het volgsysteem nog niet geopend voor dit onderdeel. Neem rechtstreeks contact op met de student en motiveer om het volgsysteem te bekijken; pas daarna kan feedback worden opgeslagen.",
+      },
+      { status: 400 }
+    );
+  }
+
   // Draft-save = altijd DRAFT + publishedAt leegmaken
   const review = await prisma.teacherReview.upsert({
     where: { assessmentId },
