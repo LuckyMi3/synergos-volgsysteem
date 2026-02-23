@@ -22,12 +22,12 @@ export async function POST(req: Request) {
 
     const result = await prisma.score.upsert({
       where: {
-        assessmentId_themeId_questionId: {
-          assessmentId,
-          themeId,
-          questionId
-        }
-      },
+  assessment_theme_question: {
+    assessmentId,
+    themeId,
+    questionId,
+  },
+},
       update: {
         score,
         comment
