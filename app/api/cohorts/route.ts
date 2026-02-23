@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 
 export async function GET() {
   const cohorts = await prisma.cohort.findMany({
-    orderBy: [{ year: "desc" }, { rubricKey: "asc" }],
+    orderBy: [{ createdAt: "desc" }, { naam: "asc" }],
   });
   return NextResponse.json(cohorts);
 }
