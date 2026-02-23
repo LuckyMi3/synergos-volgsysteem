@@ -24,10 +24,14 @@ export async function POST(
   skipDuplicates: true,
 });
 
-  const teachers = await prisma.cohortTeacher.findMany({
-    where: { cohortId },
-    orderBy: { createdAt: "asc" },
-  });
+  const teachers = await prisma.enrollment.findMany({
+  where: {
+    cohortId,
+    user: { role: { in: ["TEACHER", "ADMIN"] } },
+  },
+  include: { user: true },
+  orderBy: { createdAt: "asc" },
+});
 
   return NextResponse.json(teachers);
 }
