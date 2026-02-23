@@ -16,13 +16,13 @@ export async function POST(
     );
   }
 
-  await prisma.cohortTeacher.createMany({
-    data: teacherIds.map((teacherId: string) => ({
-      cohortId,
-      teacherId,
-    })),
-    skipDuplicates: true,
-  });
+  await prisma.enrollment.createMany({
+  data: teacherIds.map((teacherId: string) => ({
+    cohortId,
+    userId: teacherId,
+  })),
+  skipDuplicates: true,
+});
 
   const teachers = await prisma.cohortTeacher.findMany({
     where: { cohortId },
