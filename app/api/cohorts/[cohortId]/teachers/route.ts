@@ -24,14 +24,23 @@ export async function POST(
   skipDuplicates: true,
 });
 
-  const teachers = await prisma.enrollment.findMany({
-  where: {
-    cohortId,
-    user: { role: { in: ["TEACHER", "ADMIN"] } },
-  },
-  include: { user: true },
-  orderBy: { createdAt: "asc" },
-});
+    const enrollments = await prisma.enrollment.findMany({
+    where: {
+      cohortId,
+      user: { role: { in: ["TEACHER", "ADMIN"] } },
+    },
+    include: { user: true },
+    orderBy: { createdAt: "asc" },
+  });
 
-  return NextResponse.json(teachers);
-}
+  const teachers = enrollments.map((e) => ({
+    enrollmentId: e.id,
+    userId: e.userId,
+    coachNaam: e.coachNaam,
+    trajectStatus: e.trajectStatus,
+    assessmentLocked: e.assessmentLocked,
+    createdAt: e.createdAt,
+    user: e.user,
+  }));
+
+  return NextResponse.json({ ok: true, teachers });
