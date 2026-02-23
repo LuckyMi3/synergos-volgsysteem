@@ -9,10 +9,14 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "assessmentId is required" }, { status: 400 });
   }
 
-  // Gate: alleen als review published is
-  const review = await prisma.teacherReview.findUnique({ where: { assessmentId } });
+  // Gate: alleen als er minimaal 1 published review is
+  // (TeacherReview is unique op assessmentId + teacherId)
+  const review = await prisma.teacherReview.findFirst({
+    where: { assessmentId, status: "PUBLISHED" },
+    orderBy: { publishedAt: "desc" },
+  });
 
-  if (!review || review.status !== "PUBLISHED") {
+  if (!review) {
     return NextResponse.json([]); // student ziet niks
   }
 
