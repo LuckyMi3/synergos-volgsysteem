@@ -5,13 +5,31 @@ export async function GET(
   _req: Request,
   { params }: { params: { teacherId: string } }
 ) {
-  const { teacherId } = params;
+  const teacherId = params.teacherId;
 
-  const memberships = await prisma.cohortTeacher.findMany({
-    where: { teacherId },
-    include: { cohort: true },
-    orderBy: [{ cohort: { year: "desc" } }, { cohort: { rubricKey: "asc" } }],
-  });
+  try {
+    const cohorts = await prisma.cohort.findMany({
+      where: {
+        enrollments: {
+          some: { userId: teacherId },
+        },
+      },
+      orderBy: [{ createdAt: "desc" }],
+      select: {
+        id: true,
+        naam: true,
+        uitvoeringId: true,
+        traject: true,
+        createdAt: true,
+      },
+    });
 
-  return NextResponse.json(memberships.map((m) => m.cohort));
+    return NextResponse.json({ cohorts });
+  } catch (err) {
+    console.error("GET /api/teachers/[teacherId]/cohorts failed:", err);
+    return NextResponse.json(
+      { error: "Failed to load cohorts" },
+      { status: 500 }
+    );
+  }
 }

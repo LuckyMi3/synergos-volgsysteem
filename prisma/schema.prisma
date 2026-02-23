@@ -7,184 +7,168 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-/* =========================
-   STUDENT
-========================= */
+model User {
+  id            String   @id @default(cuid())
+  crmCustomerId String   @unique
+  voornaam      String
+  tussenvoegsel String?
+  achternaam    String
+  email         String
+  mobiel        String?
+  role          Role
+  createdAt     DateTime @default(now())
 
-model Student {
-  id        String   @id @default(cuid())
-  apolloId  String?  @unique // externe sleutel (Apollo)
-  name      String
-  createdAt DateTime @default(now())
+  // Cohort membership (student/teacher/admin)
+  enrollments Enrollment[]
 
-  assessments Assessment[]
-  cohorts     CohortStudent[]
+  // Student assessments (as student)
+  assessments Assessment[] @relation("StudentAssessments")
+
+  // Teacher per-question corrections
+  teacherScores TeacherScore[]
+
+  // Teacher publish gate per assessment
+  teacherReviews TeacherReview[]
 }
 
-/* =========================
-   TEACHER (docentenpool)
-========================= */
+model Cohort {
+  id           String   @id @default(cuid())
+  uitvoeringId String   @unique
+  naam         String
+  traject      String?
+  createdAt    DateTime @default(now())
 
-model Teacher {
-  id        String   @id @default(cuid())
-  apolloId  String?  @unique // externe sleutel (Apollo)
-  name      String
-  email     String?  @unique
-  createdAt DateTime @default(now())
-
-  cohorts CohortTeacher[]
-  reviews TeacherReview[]
-  scores  TeacherScore[]
+  enrollments Enrollment[]
 }
 
-/* =========================
-   ASSESSMENT
-========================= */
+model Enrollment {
+  id               String   @id @default(cuid())
+  userId           String
+  cohortId         String
+  coachNaam        String?
+  trajectStatus    String?
+  assessmentLocked Boolean  @default(false)
+  createdAt        DateTime @default(now())
+
+  user   User   @relation(fields: [userId], references: [id])
+  cohort Cohort @relation(fields: [cohortId], references: [id])
+
+  @@unique([userId, cohortId], name: "userId_cohortId")
+}
+
+/**
+ * =========================
+ * Assessments & scores
+ * =========================
+ */
 
 model Assessment {
-  id        String   @id @default(cuid())
-  studentId String
-  moment    String   // "M1" | "M2" | "M3"
-  rubricKey String   // "1VO" | "2VO" | "3VO"
-  status    String   @default("draft")
-  createdAt DateTime @default(now())
-
-  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  scores  Score[]
-
-  review TeacherReview?
-
-  @@unique([studentId, moment, rubricKey])
-}
-
-/* =========================
-   STUDENT SCORE
-========================= */
-
-model Score {
-  id           String   @id @default(cuid())
-  assessmentId String
-  themeId      String
-  questionId   String
-  score        Int
-  comment      String?  @db.Text
-  updatedAt    DateTime @updatedAt
-
-  assessment Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
-
-  @@unique([assessmentId, themeId, questionId])
-}
-
-/* =========================
-   REVIEW STATUS ENUM
-========================= */
-
-enum ReviewStatus {
-  DRAFT
-  PUBLISHED
-}
-
-/* =========================
-   TEACHER REVIEW (1 per assessment)
-========================= */
-
-model TeacherReview {
   id String @id @default(cuid())
 
-  assessmentId String     @unique
-  assessment   Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  // Student waarvoor dit assessment is
+  studentId String
+  student   User   @relation("StudentAssessments", fields: [studentId], references: [id])
 
-  teacherId String
-  teacher   Teacher @relation(fields: [teacherId], references: [id], onDelete: Cascade)
-
-  correctedScore Int?
-  feedback       String? @db.Text
-
-  status      ReviewStatus @default(DRAFT)
-  publishedAt DateTime?
+  // Context zoals je UI gebruikt
+  rubricKey String // bijv "1vo"
+  moment    Moment // "M1" | "M2" | "M3"
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@index([teacherId])
-  @@index([status])
+  // Student ingevulde scores (raw)
+  scores Score[]
+
+  // Docentcorrecties + feedback
+  teacherScores  TeacherScore[]
+  teacherReviews TeacherReview[]
+
+  // 1 assessment per student per rubricKey per moment
+  @@unique([studentId, rubricKey, moment], name: "student_rubric_moment")
 }
 
-/* =========================
-   COHORT (bijv. 1VO 2026)
-========================= */
+model Score {
+  id           String     @id @default(cuid())
+  assessmentId String
+  assessment   Assessment @relation(fields: [assessmentId], references: [id])
 
-model Cohort {
-  id        String   @id @default(cuid())
-  apolloId  String?  @unique // externe sleutel (Apollo)
-  title     String   // "1VO 2026"
-  rubricKey String   // "1vo" | "2vo" | "3vo"
-  year      Int
+  // Per vraag
+  themeId    String
+  questionId String
+
+  // Student score
+  score   Int
+  comment String?
+
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  students CohortStudent[]
-  teachers CohortTeacher[]
-
-  @@unique([rubricKey, year])
+  // 1 row per assessment per vraag
+  @@unique([assessmentId, themeId, questionId], name: "assessment_theme_question")
 }
 
-/* =========================
-   STUDENT ↔ COHORT
-========================= */
-
-model CohortStudent {
-  id        String   @id @default(cuid())
-  cohortId  String
-  studentId String
-  createdAt DateTime @default(now())
-
-  cohort  Cohort  @relation(fields: [cohortId], references: [id], onDelete: Cascade)
-  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
-
-  @@unique([cohortId, studentId])
-  @@index([studentId])
-  @@index([cohortId])
-}
-
-/* =========================
-   TEACHER ↔ COHORT
-========================= */
-
-model CohortTeacher {
-  id        String   @id @default(cuid())
-  cohortId  String
-  teacherId String
-  createdAt DateTime @default(now())
-
-  cohort  Cohort  @relation(fields: [cohortId], references: [id], onDelete: Cascade)
-  teacher Teacher @relation(fields: [teacherId], references: [id], onDelete: Cascade)
-
-  @@unique([cohortId, teacherId])
-  @@index([teacherId])
-  @@index([cohortId])
-}
-
-/* =========================
-   PER-QUESTION DOCENTCORRECTIE
-========================= */
+/**
+ * =========================
+ * Teacher layer (multi-docent)
+ * =========================
+ */
 
 model TeacherScore {
   id String @id @default(cuid())
 
   assessmentId String
-  teacherId    String
-  teacher      Teacher @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  assessment   Assessment @relation(fields: [assessmentId], references: [id])
+
+  teacherId String
+  teacher   User   @relation(fields: [teacherId], references: [id])
 
   themeId    String
   questionId String
 
   correctedScore Int?
-  feedback       String? @db.Text
+  feedback       String?
 
-  updatedAt DateTime @updatedAt
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  @@unique([assessmentId, teacherId, themeId, questionId])
-  @@index([assessmentId])
-  @@index([teacherId])
+  // 1 docent-correctie per assessment per vraag
+  @@unique([assessmentId, teacherId, themeId, questionId], name: "assessment_teacher_theme_question")
+}
+
+model TeacherReview {
+  id String @id @default(cuid())
+
+  assessmentId String
+  assessment   Assessment @relation(fields: [assessmentId], references: [id])
+
+  teacherId String
+  teacher   User   @relation(fields: [teacherId], references: [id])
+
+  correctedScore Int?
+  feedback       String?
+  status         ReviewStatus @default(DRAFT)
+  publishedAt    DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // 1 review per docent per assessment
+  @@unique([assessmentId, teacherId], name: "assessment_teacher")
+}
+
+enum Role {
+  STUDENT
+  TEACHER
+  ADMIN
+}
+
+enum Moment {
+  M1
+  M2
+  M3
+}
+
+enum ReviewStatus {
+  DRAFT
+  PUBLISHED
 }

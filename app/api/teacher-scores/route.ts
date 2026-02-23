@@ -3,8 +3,8 @@ import { prisma } from "@/lib/prisma";
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
-  const assessmentId = searchParams.get("assessmentId");
-  const teacherId = searchParams.get("teacherId"); // optioneel
+  const assessmentId = searchParams.get("assessmentId")?.trim();
+  const teacherId = searchParams.get("teacherId")?.trim(); // optioneel
 
   if (!assessmentId) {
     return NextResponse.json({ error: "assessmentId is required" }, { status: 400 });
@@ -22,38 +22,52 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  const body = await req.json();
-  const { assessmentId, teacherId, themeId, questionId, correctedScore, feedback } = body ?? {};
+  try {
+    const body = await req.json();
+    const assessmentId = typeof body?.assessmentId === "string" ? body.assessmentId.trim() : "";
+    const teacherId = typeof body?.teacherId === "string" ? body.teacherId.trim() : "";
+    const themeId = typeof body?.themeId === "string" ? body.themeId.trim() : "";
+    const questionId = typeof body?.questionId === "string" ? body.questionId.trim() : "";
 
-  if (!assessmentId || !teacherId || !themeId || !questionId) {
-    return NextResponse.json(
-      { error: "assessmentId, teacherId, themeId, questionId are required" },
-      { status: 400 }
-    );
-  }
+    const correctedScore =
+      typeof body?.correctedScore === "number" ? body.correctedScore : null;
+    const feedback = typeof body?.feedback === "string" ? body.feedback : null;
 
-  const row = await prisma.teacherScore.upsert({
-    where: {
-      assessmentId_teacherId_themeId_questionId: {
+    if (!assessmentId || !teacherId || !themeId || !questionId) {
+      return NextResponse.json(
+        { error: "assessmentId, teacherId, themeId, questionId are required" },
+        { status: 400 }
+      );
+    }
+
+    const row = await prisma.teacherScore.upsert({
+      where: {
+        // ✅ matcht jouw schema:
+        // @@unique([assessmentId, teacherId, themeId, questionId], name: "assessment_teacher_theme_question")
+        assessment_teacher_theme_question: {
+          assessmentId,
+          teacherId,
+          themeId,
+          questionId,
+        },
+      },
+      create: {
         assessmentId,
         teacherId,
         themeId,
         questionId,
+        correctedScore,
+        feedback: feedback?.trim() ? feedback : null,
       },
-    },
-    create: {
-      assessmentId,
-      teacherId,
-      themeId,
-      questionId,
-      correctedScore: correctedScore ?? null,
-      feedback: feedback ?? null,
-    },
-    update: {
-      correctedScore: correctedScore ?? null,
-      feedback: feedback ?? null,
-    },
-  });
+      update: {
+        correctedScore,
+        feedback: feedback?.trim() ? feedback : null,
+      },
+    });
 
-  return NextResponse.json(row);
+    return NextResponse.json(row);
+  } catch (error) {
+    console.error("TeacherScore upsert error:", error);
+    return NextResponse.json({ error: "Failed to save teacher score" }, { status: 500 });
+  }
 }

@@ -1,4 +1,5 @@
 import { PrismaClient } from "@prisma/client";
+import React from "react";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
@@ -7,56 +8,49 @@ const prisma = globalForPrisma.prisma ?? new PrismaClient();
 if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
 
 /* =========================
+   Helpers
+========================= */
+
+function fullNameFromUser(u: any) {
+  return [u.voornaam, u.tussenvoegsel, u.achternaam].filter(Boolean).join(" ");
+}
+
+function isTeacherRole(role: any) {
+  const r = String(role ?? "").toUpperCase();
+  return r.includes("TEACH") || r.includes("DOCENT");
+}
+
+function cohortLabel(c: any) {
+  // jouw Cohort heeft in elk geval: naam, traject, uitvoeringId
+  return `${c.naam} · ${c.traject} · ${c.uitvoeringId}`;
+}
+
+/* =========================
    Server Actions
 ========================= */
 
-async function createTeacher(formData: FormData) {
-  "use server";
-
-  const name = String(formData.get("name") || "").trim();
-  const emailRaw = formData.get("email")?.toString().trim() || "";
-  const email = emailRaw.length ? emailRaw : null;
-
-  if (!name) redirect("/admin/teachers?msg=Naam%20ontbreekt");
-
-  // If email is provided: dedupe via upsert on unique email
-  if (email) {
-    const existing = await prisma.teacher.findUnique({ where: { email } });
-
-    await prisma.teacher.upsert({
-      where: { email },
-      update: { name }, // keep it lean: email is the key, name can be refreshed
-      create: { name, email },
-    });
-
-    revalidatePath("/admin/teachers");
-    redirect(
-      existing
-        ? "/admin/teachers?msg=Bestond%20al%3A%20naam%20bijgewerkt"
-        : "/admin/teachers?msg=Docent%20toegevoegd"
-    );
-  }
-
-  // If no email: can't dedupe -> just create
-  await prisma.teacher.create({
-    data: { name, email: null },
-  });
-
-  revalidatePath("/admin/teachers");
-  redirect("/admin/teachers?msg=Docent%20toegevoegd%20(zonder%20email)");
-}
-
 async function linkTeacherToCohort(formData: FormData) {
   "use server";
-  const teacherId = String(formData.get("teacherId") || "");
-  const cohortId = String(formData.get("cohortId") || "");
-  if (!teacherId || !cohortId) redirect("/admin/teachers?msg=Selecteer%20docent%20en%20cohort");
 
-  await prisma.cohortTeacher.upsert({
-    where: { cohortId_teacherId: { cohortId, teacherId } },
-    update: {},
-    create: { cohortId, teacherId },
-  });
+  const userId = String(formData.get("userId") || "");
+  const cohortId = String(formData.get("cohortId") || "");
+  if (!userId || !cohortId) redirect("/admin/teachers?msg=Selecteer%20docent%20en%20cohort");
+
+  // Vereist dat je Enrollment een unieke key heeft op (cohortId, userId).
+  // Zo niet: dan krijg je een duidelijke Prisma error en passen we 'm 1-op-1 aan.
+  await prisma.enrollment.upsert({
+  where: {
+    userId_cohortId: {
+      userId,
+      cohortId,
+    },
+  },
+  update: {},
+  create: {
+    userId,
+    cohortId,
+  },
+});
 
   revalidatePath("/admin/teachers");
   redirect("/admin/teachers?msg=Gekoppeld");
@@ -64,12 +58,13 @@ async function linkTeacherToCohort(formData: FormData) {
 
 async function unlinkTeacherFromCohort(formData: FormData) {
   "use server";
-  const teacherId = String(formData.get("teacherId") || "");
-  const cohortId = String(formData.get("cohortId") || "");
-  if (!teacherId || !cohortId) redirect("/admin/teachers?msg=Ontkoppelen%20mislukt");
 
-  await prisma.cohortTeacher.delete({
-    where: { cohortId_teacherId: { cohortId, teacherId } },
+  const userId = String(formData.get("userId") || "");
+  const cohortId = String(formData.get("cohortId") || "");
+  if (!userId || !cohortId) redirect("/admin/teachers?msg=Ontkoppelen%20mislukt");
+
+  await prisma.enrollment.delete({
+    where: { cohortId_userId: { cohortId, userId } } as any,
   });
 
   revalidatePath("/admin/teachers");
@@ -77,7 +72,7 @@ async function unlinkTeacherFromCohort(formData: FormData) {
 }
 
 /* =========================
-   UI helpers
+   UI components
 ========================= */
 
 function Chip({ children }: { children: React.ReactNode }) {
@@ -99,17 +94,17 @@ function Chip({ children }: { children: React.ReactNode }) {
 }
 
 function ChipUnlinkButton({
-  teacherId,
+  userId,
   cohortId,
   title,
 }: {
-  teacherId: string;
+  userId: string;
   cohortId: string;
   title: string;
 }) {
   return (
     <form action={unlinkTeacherFromCohort} style={{ display: "inline" }}>
-      <input type="hidden" name="teacherId" value={teacherId} />
+      <input type="hidden" name="userId" value={userId} />
       <input type="hidden" name="cohortId" value={cohortId} />
       <button
         type="submit"
@@ -142,20 +137,34 @@ export default async function AdminTeachersPage(props: {
   const msgRaw = searchParams.msg;
   const msg = Array.isArray(msgRaw) ? msgRaw[0] : msgRaw;
 
-  const [teachers, cohorts] = await Promise.all([
-    prisma.teacher.findMany({
-      include: {
-        cohorts: { include: { cohort: true } },
-      },
-      orderBy: { name: "asc" },
+  const [users, cohorts, enrollments] = await Promise.all([
+    prisma.user.findMany({
+      orderBy: [{ achternaam: "asc" }, { voornaam: "asc" }],
     }),
     prisma.cohort.findMany({
-      include: {
-        teachers: { include: { teacher: true } },
-      },
-      orderBy: [{ year: "asc" }, { title: "asc" }],
+      orderBy: [{ traject: "asc" }, { naam: "asc" }],
+    }),
+    prisma.enrollment.findMany({
+      include: { user: true, cohort: true },
+      orderBy: { createdAt: "asc" },
     }),
   ]);
+
+  const teachers = users.filter((u: any) => isTeacherRole(u.role));
+
+  // indexeer koppelingen
+  const linksByUserId = new Map<string, any[]>();
+  const linksByCohortId = new Map<string, any[]>();
+
+  for (const e of enrollments) {
+    const arrU = linksByUserId.get(e.userId) ?? [];
+    arrU.push(e);
+    linksByUserId.set(e.userId, arrU);
+
+    const arrC = linksByCohortId.get(e.cohortId) ?? [];
+    arrC.push(e);
+    linksByCohortId.set(e.cohortId, arrC);
+  }
 
   const card: React.CSSProperties = {
     border: "1px solid #e5e7eb",
@@ -175,6 +184,11 @@ export default async function AdminTeachersPage(props: {
         <div style={label}>
           {teachers.length} docenten · {cohorts.length} cohorten
         </div>
+        <div style={{ marginLeft: "auto" }}>
+          <a href="/admin/cohorts" style={{ fontSize: 12 }}>
+            naar cohorten →
+          </a>
+        </div>
       </div>
 
       {msg ? (
@@ -191,128 +205,143 @@ export default async function AdminTeachersPage(props: {
         </div>
       ) : null}
 
-      {/* Actions */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-        <div style={card}>
-          <h2 style={h2}>Nieuwe docent</h2>
-          <div style={{ ...label, marginTop: 6 }}>
-            Met email: dedupe (upsert). Zonder email: altijd nieuw record.
-          </div>
-
-          <form action={createTeacher} style={{ display: "grid", gap: 8, marginTop: 10 }}>
-            <input name="name" placeholder="Naam" required />
-            <input name="email" placeholder="Email (sterk aangeraden)" />
-            <button type="submit">Toevoegen / bijwerken</button>
-          </form>
+      <div style={card}>
+        <h2 style={h2}>Koppel docent ↔ cohort</h2>
+        <div style={{ ...label, marginTop: 6 }}>
+          Je hebt nu nog geen docenten? Zet ze in Prisma (User.role bevat “TEACH…” of “DOCENT…”), dan verschijnen ze hier.
         </div>
 
-        <div style={card}>
-          <h2 style={h2}>Koppel docent ↔ cohort</h2>
-          <form action={linkTeacherToCohort} style={{ display: "grid", gap: 8, marginTop: 10 }}>
-            <select name="teacherId" required>
-              <option value="">Selecteer docent</option>
-              {teachers.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name}
-                  {t.email ? ` (${t.email})` : ""}
-                </option>
-              ))}
-            </select>
+        <form action={linkTeacherToCohort} style={{ display: "grid", gap: 8, marginTop: 10 }}>
+          <select name="userId" required>
+            <option value="">Selecteer docent</option>
+            {teachers.map((t: any) => (
+              <option key={t.id} value={t.id}>
+                {fullNameFromUser(t) || t.email || t.id}
+                {t.email ? ` (${t.email})` : ""}
+              </option>
+            ))}
+          </select>
 
-            <select name="cohortId" required>
-              <option value="">Selecteer cohort</option>
-              {cohorts.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.title}
-                </option>
-              ))}
-            </select>
+          <select name="cohortId" required>
+            <option value="">Selecteer cohort</option>
+            {cohorts.map((c: any) => (
+              <option key={c.id} value={c.id}>
+                {cohortLabel(c)}
+              </option>
+            ))}
+          </select>
 
-            <button type="submit">Koppelen</button>
-          </form>
-        </div>
+          <button type="submit" disabled={teachers.length === 0 || cohorts.length === 0}>
+            Koppelen
+          </button>
+        </form>
       </div>
 
-      {/* Two columns */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, alignItems: "start" }}>
-        {/* Teachers -> cohorts */}
         <div style={card}>
           <h2 style={h2}>Docenten → cohorten</h2>
-          <div style={{ display: "grid", gap: 10, marginTop: 10 }}>
-            {teachers.map((t) => (
-              <div
-                key={t.id}
-                style={{ border: "1px solid #f1f5f9", borderRadius: 10, padding: 10 }}
-              >
-                <div style={{ display: "flex", gap: 8, alignItems: "baseline" }}>
-                  <strong>{t.name}</strong>
-                  <span style={label}>{t.email ?? "—"}</span>
-                </div>
 
-                <div style={{ marginTop: 6 }}>
-                  {t.cohorts.length === 0 ? (
-                    <span style={{ ...label, color: "#9ca3af" }}>geen cohorten</span>
-                  ) : (
-                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                      {t.cohorts.map((ct) => (
-                        <Chip key={ct.id}>
-                          {ct.cohort.title}
-                          <ChipUnlinkButton
-                            teacherId={t.id}
-                            cohortId={ct.cohortId}
-                            title={`Ontkoppel ${t.name} van ${ct.cohort.title}`}
-                          />
-                        </Chip>
-                      ))}
+          {teachers.length === 0 ? (
+            <div style={{ ...label, marginTop: 10 }}>Nog geen docenten gevonden.</div>
+          ) : (
+            <div style={{ display: "grid", gap: 10, marginTop: 10 }}>
+              {teachers.map((t: any) => {
+                const tLinks = linksByUserId.get(t.id) ?? [];
+                return (
+                  <div
+                    key={t.id}
+                    style={{ border: "1px solid #f1f5f9", borderRadius: 10, padding: 10 }}
+                  >
+                    <div style={{ display: "flex", gap: 8, alignItems: "baseline" }}>
+                      <strong>{fullNameFromUser(t) || t.email || t.id}</strong>
+                      <span style={label}>{t.email ?? "—"}</span>
                     </div>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
+
+                    <div style={{ marginTop: 6 }}>
+                      {tLinks.length === 0 ? (
+                        <span style={{ ...label, color: "#9ca3af" }}>geen cohorten</span>
+                      ) : (
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                          {tLinks.map((e: any) => (
+                            <Chip key={e.id}>
+                              {cohortLabel(e.cohort)}
+                              <ChipUnlinkButton
+                                userId={t.id}
+                                cohortId={e.cohortId}
+                                title={`Ontkoppel ${fullNameFromUser(t) || t.email || t.id} van ${cohortLabel(
+                                  e.cohort
+                                )}`}
+                              />
+                            </Chip>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
 
-        {/* Cohorts -> teachers */}
         <div style={card}>
           <h2 style={h2}>Cohorten → docenten</h2>
-          <div style={{ display: "grid", gap: 10, marginTop: 10 }}>
-            {cohorts.map((c) => (
-              <div
-                key={c.id}
-                style={{ border: "1px solid #f1f5f9", borderRadius: 10, padding: 10 }}
-              >
-                <div style={{ display: "flex", gap: 8, alignItems: "baseline" }}>
-                  <strong>{c.title}</strong>
-                  <span style={label}>{c.rubricKey.toUpperCase()}</span>
-                  <span style={label}>{c.year}</span>
-                </div>
 
-                <div style={{ marginTop: 6 }}>
-                  {c.teachers.length === 0 ? (
-                    <span style={{ ...label, color: "#9ca3af" }}>geen docenten</span>
-                  ) : (
-                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                      {c.teachers.map((ct) => (
-                        <Chip key={ct.id}>
-                          {ct.teacher.name}
-                          <ChipUnlinkButton
-                            teacherId={ct.teacherId}
-                            cohortId={c.id}
-                            title={`Ontkoppel ${ct.teacher.name} van ${c.title}`}
-                          />
-                        </Chip>
-                      ))}
+          {cohorts.length === 0 ? (
+            <div style={{ ...label, marginTop: 10 }}>Nog geen cohorten gevonden.</div>
+          ) : (
+            <div style={{ display: "grid", gap: 10, marginTop: 10 }}>
+              {cohorts.map((c: any) => {
+                const cLinks = linksByCohortId.get(c.id) ?? [];
+                return (
+                  <div
+                    key={c.id}
+                    style={{ border: "1px solid #f1f5f9", borderRadius: 10, padding: 10 }}
+                  >
+                    <div style={{ display: "grid", gap: 2 }}>
+                      <strong>{c.naam}</strong>
+                      <span style={label}>
+                        traject: {c.traject} · uitvoering: {c.uitvoeringId}
+                      </span>
+                      <span style={label}>
+                        aangemaakt: {new Date(c.createdAt).toLocaleString("nl-NL")}
+                      </span>
                     </div>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
+
+                    <div style={{ marginTop: 8 }}>
+                      {cLinks.length === 0 ? (
+                        <span style={{ ...label, color: "#9ca3af" }}>geen docenten</span>
+                      ) : (
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                          {cLinks
+                            .filter((e: any) => isTeacherRole(e.user?.role))
+                            .map((e: any) => {
+                              const t = e.user;
+                              const tLabel = fullNameFromUser(t) || t.email || t.id;
+                              return (
+                                <Chip key={e.id}>
+                                  {tLabel}
+                                  <ChipUnlinkButton
+                                    userId={e.userId}
+                                    cohortId={c.id}
+                                    title={`Ontkoppel ${tLabel} van ${cohortLabel(c)}`}
+                                  />
+                                </Chip>
+                              );
+                            })}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
 
       <div style={{ ...label, marginTop: 2 }}>
-        v1: email dedupe via upsert · unlink = delete op CohortTeacher
+        v1: docenten = Users met role die “TEACH” of “DOCENT” bevat · koppeling via Enrollment (userId+cohortId)
       </div>
     </div>
   );

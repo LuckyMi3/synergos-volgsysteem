@@ -1,3 +1,4 @@
+import ImpersonationBanner from "../components/ImpersonationBanner";
 import RoleSwitcher from "../components/RoleSwitcher";
 
 export const metadata = {
@@ -12,6 +13,7 @@ export default function RootLayout({
   return (
     <html lang="nl">
       <body style={{ margin: 0, fontFamily: "system-ui, sans-serif" }}>
+        <ImpersonationBanner />
         <RoleSwitcher />
         {children}
       </body>

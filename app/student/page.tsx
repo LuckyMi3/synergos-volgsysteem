@@ -5,8 +5,17 @@ import { rubric1VO } from "@/lib/rubrics/1vo";
 
 type Moment = "M1" | "M2" | "M3";
 
-const ACTIVE_STUDENT_ID = "cmlqjz0vg0006geb8ucgsfxid";
 const ACTIVE_RUBRIC_KEY = "1vo";
+
+type MeUser = {
+  id: string;
+  role: string;
+  name?: string;
+  voornaam?: string;
+  tussenvoegsel?: string | null;
+  achternaam?: string;
+  email?: string | null;
+};
 
 type PublishedTeacherReview = {
   id: string;
@@ -43,11 +52,22 @@ function teacherScoreColor(value: number | null) {
   return scoreColor(value);
 }
 
+function displayNameFromMe(me: MeUser | null) {
+  if (!me) return "—";
+  if (me.name && me.name.trim()) return me.name.trim();
+  const parts = [me.voornaam, me.tussenvoegsel, me.achternaam].filter(Boolean);
+  return parts.join(" ").trim() || me.email || me.id;
+}
+
 export default function Page() {
   const moments: Moment[] = useMemo(() => ["M1", "M2", "M3"], []);
 
   const [moment, setMoment] = useState<Moment>("M1");
   const [openTheme, setOpenTheme] = useState<string | null>(null);
+
+  // ✅ effectieve user (impersonated of echte login)
+  const [me, setMe] = useState<MeUser | null>(null);
+  const studentId = me?.id ?? "";
 
   // scores per UI-key: `${moment}-${themeId}-${questionId}`
   const [scores, setScores] = useState<Record<string, number>>({});
@@ -69,6 +89,31 @@ export default function Page() {
     setScores((prev) => ({ ...prev, [key]: value }));
   }
 
+  // ✅ load effective user once
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const res = await fetch("/api/me");
+        const data = await res.json().catch(() => ({}));
+        if (cancelled) return;
+
+        if (data?.ok && data?.user?.id) {
+          setMe(data.user as MeUser);
+        } else {
+          setDbStatus("Geen ingelogde/impersonated student gevonden.");
+        }
+      } catch {
+        if (!cancelled) setDbStatus("User laden faalde (netwerk/exception).");
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -78,25 +123,33 @@ export default function Page() {
       setPublishedReview(null);
       setReviewOpen(false);
 
+      if (!studentId) {
+        setDbStatus("Student laden...");
+        return;
+      }
+
       try {
-        // 1) ensure assessment
+        // 1) ensure assessment (voor ingelogde/impersonated student)
         const ensureRes = await fetch("/api/assessments/ensure", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            studentId: ACTIVE_STUDENT_ID,
+            studentId,
             moment,
             rubricKey: ACTIVE_RUBRIC_KEY,
           }),
         });
 
+        const ensureJson = await ensureRes.json().catch(() => ({}));
+
         if (!ensureRes.ok) {
-          setDbStatus(`Assessment ensure faalde (${ensureRes.status}).`);
+          setDbStatus(
+            `Assessment ensure faalde (${ensureRes.status}): ${ensureJson?.error ?? "onbekend"}`
+          );
           return;
         }
 
-        const ensured = await ensureRes.json();
-        const ensuredId = ensured?.id as string | undefined;
+        const ensuredId = ensureJson?.id as string | undefined;
 
         if (!ensuredId) {
           setDbStatus("Assessment ensure gaf geen id terug.");
@@ -107,17 +160,13 @@ export default function Page() {
         setAssessmentId(ensuredId);
 
         // 2) load scores
-        const res = await fetch(
-          `/api/scores?assessmentId=${encodeURIComponent(ensuredId)}`
-        );
+        const res = await fetch(`/api/scores?assessmentId=${encodeURIComponent(ensuredId)}`);
         if (!res.ok) {
           setDbStatus(`Scores laden faalde (${res.status}).`);
           return;
         }
 
-        const rows: Array<{ themeId: string; questionId: string; score: number }> =
-          await res.json();
-
+        const rows: Array<{ themeId: string; questionId: string; score: number }> = await res.json();
         if (cancelled) return;
 
         setScores(() => {
@@ -131,9 +180,7 @@ export default function Page() {
 
         // 3) load published teacher review (student ziet alleen PUBLISHED)
         const reviewRes = await fetch(
-          `/api/teacher-reviews/published?assessmentId=${encodeURIComponent(
-            ensuredId
-          )}`
+          `/api/teacher-reviews/published?assessmentId=${encodeURIComponent(ensuredId)}`
         );
 
         if (reviewRes.ok) {
@@ -151,15 +198,13 @@ export default function Page() {
     return () => {
       cancelled = true;
     };
-  }, [moment]);
+  }, [moment, studentId]);
 
   async function refreshPublishedReview() {
     if (!assessmentId) return;
     try {
       const r = await fetch(
-        `/api/teacher-reviews/published?assessmentId=${encodeURIComponent(
-          assessmentId
-        )}`
+        `/api/teacher-reviews/published?assessmentId=${encodeURIComponent(assessmentId)}`
       );
       if (r.ok) {
         const review = (await r.json()) as PublishedTeacherReview | null;
@@ -170,11 +215,7 @@ export default function Page() {
     }
   }
 
-  async function saveScoreToDb(args: {
-    themeId: string;
-    questionId: string;
-    value: number;
-  }) {
+  async function saveScoreToDb(args: { themeId: string; questionId: string; value: number }) {
     if (!assessmentId) {
       setDbStatus(`Kan niet opslaan: assessmentId ontbreekt (${moment}).`);
       return;
@@ -209,7 +250,7 @@ export default function Page() {
       <h1>1VO - Vakopleiding Haptonomie</h1>
 
       <div style={{ marginBottom: 16 }}>
-        <strong>Student:</strong> Student Voorbeeld
+        <strong>Student:</strong> {displayNameFromMe(me)}
       </div>
 
       {/* Meetmoment + refresh */}
@@ -369,7 +410,7 @@ export default function Page() {
         </div>
       </div>
 
-      {/* Thema's (zonder docentblok per vraag) */}
+      {/* Thema's */}
       {rubric1VO.themes.map((theme) => (
         <div
           key={theme.id}
@@ -407,16 +448,13 @@ export default function Page() {
                       borderBottom: "1px solid #eee",
                     }}
                   >
-                    {/* Vraag */}
                     <div style={{ marginBottom: 6, fontWeight: 600 }}>{q.text}</div>
 
-                    {/* Jouw status */}
                     <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 10 }}>
                       Jouw huidige inschatting:{" "}
                       <span style={{ color: scoreColor(value) }}>{scoreLabel(value)}</span>
                     </div>
 
-                    {/* Slider */}
                     <input
                       type="range"
                       min={rubric1VO.scale.min}
@@ -435,7 +473,6 @@ export default function Page() {
                       style={{ width: "100%" }}
                     />
 
-                    {/* Schaal-ankers */}
                     <div
                       style={{
                         display: "flex",

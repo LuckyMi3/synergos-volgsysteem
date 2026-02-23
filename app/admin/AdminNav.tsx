@@ -5,12 +5,15 @@ import { usePathname } from "next/navigation";
 
 const tabs = [
   { href: "/admin", label: "Dashboard" },
+
+  // Primair: dit is jouw “router” naar bijna alles
   { href: "/admin/cohorts", label: "Cohorts" },
-  { href: "/admin/students", label: "Studenten" },
-  { href: "/admin/assessments", label: "Assessments" },
-  { href: "/admin/reviews", label: "Reviews" },
-  { href: "/admin/locks", label: "Lock/Unlock" },
-  { href: "/admin/teachers", label: "Docenten & koppelingen" },
+
+  // Beheer/impersonation startpunt
+  { href: "/admin/users", label: "Users" },
+
+  // Alle admin ingrepen (lock/unlock, imports, etc.)
+  { href: "/admin/tools", label: "Tools" },
 ];
 
 function isActive(pathname: string, href: string) {

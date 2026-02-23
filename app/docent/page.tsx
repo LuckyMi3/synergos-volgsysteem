@@ -5,18 +5,15 @@ import { rubric1VO } from "@/lib/rubrics/1vo";
 
 type Moment = "M1" | "M2" | "M3";
 
-type Student = {
-  id: string;
-  name: string;
-};
-
 type Cohort = {
   id: string;
-  title: string;
-  rubricKey: string;
-  year: number;
+  naam: string;
+  traject?: string | null;
+  uitvoeringId: string;
   createdAt: string;
 };
+
+type StudentOption = { id: string; name: string };
 
 type ScoreRow = {
   id: string;
@@ -34,8 +31,8 @@ type TeacherReview = {
   id: string;
   assessmentId: string;
   teacherId: string;
-  correctedScore: number | null; // blijft bestaan, maar is "overall" (optioneel)
-  feedback: string | null; // algemene feedback (optioneel)
+  correctedScore: number | null;
+  feedback: string | null;
   status: ReviewStatus;
   publishedAt: string | null;
   createdAt: string;
@@ -56,10 +53,17 @@ type TeacherScoreRow = {
 
 type SaveState = "idle" | "saving" | "saved" | "error";
 
-const ACTIVE_RUBRIC_KEY = "1vo";
+type MeUser = {
+  id: string;
+  role: string;
+  name?: string;
+  voornaam?: string;
+  tussenvoegsel?: string | null;
+  achternaam?: string;
+  email?: string | null;
+};
 
-// v1: nog geen auth → teacherId hardcoded (later uit portal context)
-const TEACHER_ID = "docent-1";
+const ACTIVE_RUBRIC_KEY = "1vo";
 
 function badgeStyle(status: ReviewStatus | "NONE") {
   if (status === "PUBLISHED")
@@ -98,16 +102,70 @@ function k(themeId: string, questionId: string) {
   return `${themeId}__${questionId}`;
 }
 
+function displayNameFromMe(me: MeUser | null) {
+  if (!me) return "—";
+  if (me.name && me.name.trim()) return me.name.trim();
+  const parts = [me.voornaam, me.tussenvoegsel, me.achternaam].filter(Boolean);
+  return parts.join(" ").trim() || "—";
+}
+
+function normalizeStudentOptions(json: any): StudentOption[] {
+  // support: array OR { students: array }
+  const raw: any[] = Array.isArray(json)
+    ? json
+    : Array.isArray(json?.students)
+    ? json.students
+    : [];
+
+  const normalized = raw
+    .map((x: any) => {
+      // already { id, name }
+      if (x?.id && typeof x?.name === "string") {
+        return { id: String(x.id), name: x.name };
+      }
+
+      // { id, voornaam, tussenvoegsel?, achternaam }
+      if (x?.id && (x?.voornaam || x?.achternaam)) {
+        const name = [x.voornaam, x.tussenvoegsel, x.achternaam]
+          .filter(Boolean)
+          .join(" ")
+          .trim();
+        return { id: String(x.id), name: name || "—" };
+      }
+
+      // enrollment-ish: { user: { ... } }
+      const u = x?.user;
+      if (u?.id) {
+        const name = [u.voornaam, u.tussenvoegsel, u.achternaam]
+          .filter(Boolean)
+          .join(" ")
+          .trim();
+        return { id: String(u.id), name: name || u.email || String(u.id) };
+      }
+
+      // fallback
+      if (x?.id) return { id: String(x.id), name: x.email || String(x.id) };
+      return null;
+    })
+    .filter(Boolean) as StudentOption[];
+
+  return normalized;
+}
+
 export default function DocentPage() {
   const moments: Moment[] = useMemo(() => ["M1", "M2", "M3"], []);
   const [moment, setMoment] = useState<Moment>("M1");
+
+  // ✅ effectieve user (impersonated of later real login)
+  const [me, setMe] = useState<MeUser | null>(null);
+  const teacherId = me?.id || ""; // als leeg: nog niet geladen
 
   // cohorts for this teacher
   const [cohorts, setCohorts] = useState<Cohort[]>([]);
   const [selectedCohortId, setSelectedCohortId] = useState<string>("");
 
-  // students filtered by cohort + teacher
-  const [students, setStudents] = useState<Student[]>([]);
+  // students for selected cohort
+  const [students, setStudents] = useState<StudentOption[]>([]);
   const [selectedStudentId, setSelectedStudentId] = useState<string>("");
 
   const [assessmentId, setAssessmentId] = useState<string | null>(null);
@@ -141,10 +199,46 @@ export default function DocentPage() {
     setOpenRow((prev) => ({ ...prev, [key]: !(prev[key] ?? false) }));
   }
 
+  // ✅ load effective user once
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const res = await fetch("/api/me");
+        const data = await res.json().catch(() => ({}));
+        if (cancelled) return;
+
+        if (data?.ok && data?.user?.id) {
+          setMe(data.user as MeUser);
+        } else {
+          setStatus("Geen ingelogde/impersonated user gevonden.");
+        }
+      } catch {
+        if (!cancelled) setStatus("User laden faalde (netwerk/exception).");
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   async function loadTeacherReview(forAssessmentId: string) {
+    if (!teacherId) {
+      setReview(null);
+      setOverallFeedback("");
+      setReviewMsg("teacherId ontbreekt.");
+      return;
+    }
+
     setReviewMsg("");
+
+    // ✅ FIX: teacherId meegeven (multi-docent teacherReview)
     const res = await fetch(
-      `/api/teacher-reviews?assessmentId=${encodeURIComponent(forAssessmentId)}`
+      `/api/teacher-reviews?assessmentId=${encodeURIComponent(
+        forAssessmentId
+      )}&teacherId=${encodeURIComponent(teacherId)}`
     );
 
     if (!res.ok) {
@@ -161,7 +255,8 @@ export default function DocentPage() {
   }
 
   async function loadTeacherScores(forAssessmentId: string) {
-    // reset states
+    if (!teacherId) return;
+
     setTeacherScoreMap({});
     setRowSaveState({});
 
@@ -169,13 +264,10 @@ export default function DocentPage() {
       const res = await fetch(
         `/api/teacher-scores?assessmentId=${encodeURIComponent(
           forAssessmentId
-        )}&teacherId=${encodeURIComponent(TEACHER_ID)}`
+        )}&teacherId=${encodeURIComponent(teacherId)}`
       );
 
-      if (!res.ok) {
-        // route mist of error: laat UI werken, maar markeer later per save
-        return;
-      }
+      if (!res.ok) return;
 
       const rows = (await res.json()) as TeacherScoreRow[];
 
@@ -198,25 +290,19 @@ export default function DocentPage() {
     correctedScore: number | null;
     feedback: string;
   }) {
-    if (!assessmentId) return;
+    if (!assessmentId || !teacherId) return;
 
     const rowKey = k(args.themeId, args.questionId);
 
-    // update UI state first
     setTeacherScoreMap((prev) => ({
       ...prev,
       [rowKey]: { correctedScore: args.correctedScore, feedback: args.feedback },
     }));
 
-    // set saving state
     setRowState(rowKey, "saving");
 
-    // clear previous timer
-    if (saveTimersRef.current[rowKey]) {
-      clearTimeout(saveTimersRef.current[rowKey]);
-    }
+    if (saveTimersRef.current[rowKey]) clearTimeout(saveTimersRef.current[rowKey]);
 
-    // debounce
     saveTimersRef.current[rowKey] = setTimeout(async () => {
       try {
         const res = await fetch("/api/teacher-scores", {
@@ -224,7 +310,7 @@ export default function DocentPage() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             assessmentId,
-            teacherId: TEACHER_ID,
+            teacherId,
             themeId: args.themeId,
             questionId: args.questionId,
             correctedScore: args.correctedScore,
@@ -238,9 +324,10 @@ export default function DocentPage() {
         }
 
         setRowState(rowKey, "saved");
-        // after short while, go idle
         setTimeout(() => {
-          setRowSaveState((prev) => (prev[rowKey] === "saved" ? { ...prev, [rowKey]: "idle" } : prev));
+          setRowSaveState((prev) =>
+            prev[rowKey] === "saved" ? { ...prev, [rowKey]: "idle" } : prev
+          );
         }, 900);
       } catch {
         setRowState(rowKey, "error");
@@ -253,20 +340,22 @@ export default function DocentPage() {
     let cancelled = false;
 
     async function loadCohorts() {
+      if (!teacherId) return;
+
       setStatus("Cohorts laden...");
       try {
-        const res = await fetch(`/api/teachers/${encodeURIComponent(TEACHER_ID)}/cohorts`);
+        const res = await fetch(`/api/teachers/${encodeURIComponent(teacherId)}/cohorts`);
         if (!res.ok) {
           setStatus(`Cohorts laden faalde (${res.status}).`);
           return;
         }
-        const data: Cohort[] = await res.json();
+
+        const json = await res.json();
+        const data: Cohort[] = Array.isArray(json?.cohorts) ? json.cohorts : [];
         if (cancelled) return;
 
         setCohorts(data);
-        if (!selectedCohortId && data.length > 0) {
-          setSelectedCohortId(data[0].id);
-        }
+        setSelectedCohortId((prev) => (prev ? prev : data[0]?.id ?? ""));
         setStatus(null);
       } catch {
         if (!cancelled) setStatus("Cohorts laden faalde (netwerk/exception).");
@@ -278,13 +367,15 @@ export default function DocentPage() {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [teacherId]);
 
-  // 2) load students for selected cohort (filtered by teacher)
+  // 2) load students for selected cohort (robust response shapes)
   useEffect(() => {
     let cancelled = false;
 
     async function loadStudentsForCohort() {
+      if (!teacherId) return;
+
       setStudents([]);
       setSelectedStudentId("");
       if (!selectedCohortId) return;
@@ -292,22 +383,23 @@ export default function DocentPage() {
       setStatus("Studenten laden voor cohort...");
       try {
         const res = await fetch(
-          `/api/teachers/${encodeURIComponent(TEACHER_ID)}/students?cohortId=${encodeURIComponent(
+          `/api/teachers/${encodeURIComponent(teacherId)}/students?cohortId=${encodeURIComponent(
             selectedCohortId
           )}`
         );
 
+        const json = await res.json().catch(() => ({}));
+
         if (!res.ok) {
-          const data = await res.json().catch(() => ({}));
-          setStatus(`Studenten laden faalde (${res.status}): ${data?.error ?? "onbekend"}`);
+          setStatus(`Studenten laden faalde (${res.status}): ${json?.error ?? "onbekend"}`);
           return;
         }
 
-        const data: Student[] = await res.json();
+        const normalized = normalizeStudentOptions(json);
         if (cancelled) return;
 
-        setStudents(data);
-        if (data.length > 0) setSelectedStudentId(data[0].id);
+        setStudents(normalized);
+        if (normalized.length > 0) setSelectedStudentId(normalized[0].id);
         setStatus(null);
       } catch {
         if (!cancelled) setStatus("Studenten laden faalde (netwerk/exception).");
@@ -318,9 +410,9 @@ export default function DocentPage() {
     return () => {
       cancelled = true;
     };
-  }, [selectedCohortId]);
+  }, [selectedCohortId, teacherId]);
 
-  // 3) Ensure assessment + load student scores + load review + load teacher scores
+  // 3) Ensure assessment + load scores + load review + load teacher scores
   useEffect(() => {
     let cancelled = false;
 
@@ -332,6 +424,11 @@ export default function DocentPage() {
       setReviewMsg("");
       setTeacherScoreMap({});
       setRowSaveState({});
+
+      if (!teacherId) {
+        setStatus("Docent laden...");
+        return;
+      }
 
       if (!selectedStudentId) {
         setStatus(selectedCohortId ? "Kies een student." : "Kies een cohort.");
@@ -367,7 +464,6 @@ export default function DocentPage() {
         if (cancelled) return;
         setAssessmentId(ensuredId);
 
-        // student scores (read-only)
         const scoresRes = await fetch(`/api/scores?assessmentId=${encodeURIComponent(ensuredId)}`);
         if (!scoresRes.ok) {
           setStatus(`Scores laden faalde (${scoresRes.status}).`);
@@ -378,9 +474,7 @@ export default function DocentPage() {
         if (cancelled) return;
 
         const map: Record<string, number> = {};
-        for (const r of rows) {
-          map[k(r.themeId, r.questionId)] = r.score;
-        }
+        for (const r of rows) map[k(r.themeId, r.questionId)] = r.score;
         setScoreMap(map);
 
         setStatus(null);
@@ -396,7 +490,7 @@ export default function DocentPage() {
     return () => {
       cancelled = true;
     };
-  }, [selectedStudentId, moment, selectedCohortId]);
+  }, [selectedStudentId, moment, selectedCohortId, teacherId]);
 
   function getStudentScore(themeId: string, questionId: string) {
     return scoreMap[k(themeId, questionId)];
@@ -411,6 +505,10 @@ export default function DocentPage() {
       setReviewMsg("assessmentId ontbreekt.");
       return;
     }
+    if (!teacherId) {
+      setReviewMsg("teacherId ontbreekt.");
+      return;
+    }
 
     setBusy(true);
     setReviewMsg("Opslaan als draft...");
@@ -420,8 +518,8 @@ export default function DocentPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           assessmentId,
-          teacherId: TEACHER_ID,
-          correctedScore: null, // we gebruiken per-vraag scores als fundatie
+          teacherId,
+          correctedScore: null,
           feedback: overallFeedback.trim() ? overallFeedback : null,
         }),
       });
@@ -447,6 +545,10 @@ export default function DocentPage() {
       setReviewMsg("assessmentId ontbreekt.");
       return;
     }
+    if (!teacherId) {
+      setReviewMsg("teacherId ontbreekt.");
+      return;
+    }
 
     setBusy(true);
     setReviewMsg("Publiceren...");
@@ -454,7 +556,7 @@ export default function DocentPage() {
       const res = await fetch("/api/teacher-reviews/publish", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ assessmentId, teacherId: TEACHER_ID }),
+        body: JSON.stringify({ assessmentId, teacherId }),
       });
 
       const data = await res.json();
@@ -481,60 +583,56 @@ export default function DocentPage() {
   }
 
   function saveBadgeStyle(state: SaveState | undefined) {
-  if (!state || state === "idle") return { display: "none" as const };
+    if (!state || state === "idle") return { display: "none" as const };
 
-  if (state === "saving")
+    if (state === "saving")
+      return {
+        display: "inline-block",
+        padding: "2px 8px",
+        borderRadius: 999,
+        fontSize: 12,
+        border: "1px solid #ddd",
+        background: "#fff",
+        color: "#666",
+        marginLeft: 8,
+      };
+
+    if (state === "saved")
+      return {
+        display: "inline-block",
+        padding: "2px 8px",
+        borderRadius: 999,
+        fontSize: 12,
+        border: "1px solid #d1fae5",
+        background: "#ecfdf5",
+        color: "#065f46",
+        marginLeft: 8,
+      };
+
     return {
       display: "inline-block",
       padding: "2px 8px",
       borderRadius: 999,
       fontSize: 12,
-      border: "1px solid #ddd",
-      background: "#fff",
-      color: "#666",
+      border: "1px solid #fde68a",
+      background: "#fffbeb",
+      color: "#92400e",
       marginLeft: 8,
     };
-
-  if (state === "saved")
-    return {
-      display: "inline-block",
-      padding: "2px 8px",
-      borderRadius: 999,
-      fontSize: 12,
-      border: "1px solid #d1fae5",
-      background: "#ecfdf5",
-      color: "#065f46",
-      marginLeft: 8,
-    };
-
-  // niet opgeslagen (neutraal, niet rood)
-  return {
-    display: "inline-block",
-    padding: "2px 8px",
-    borderRadius: 999,
-    fontSize: 12,
-    border: "1px solid #fde68a",
-    background: "#fffbeb",
-    color: "#92400e",
-    marginLeft: 8,
-  };
-}
-
+  }
 
   return (
     <main style={{ padding: 32, maxWidth: 900, margin: "0 auto" }}>
-      <h1 style={{ fontSize: 24, marginBottom: 16 }}>
-        Docentweergave – 1VO Ontwikkelvolgsysteem
-      </h1>
+      <h1 style={{ fontSize: 24, marginBottom: 16 }}>Volgsysteem docentenfeedback</h1>
 
       {/* status */}
       <div style={{ marginBottom: 16, fontSize: 12, color: "#666" }}>
         <div>
-          <strong>Teacher:</strong> {TEACHER_ID}
+          <strong>Teacher:</strong> {displayNameFromMe(me)}
         </div>
         <div>
           <strong>Cohort:</strong>{" "}
-          {selectedCohort ? `${selectedCohort.title} (${selectedCohort.id})` : "—"}
+          {selectedCohort ? `${selectedCohort.naam} (${selectedCohort.id})` : "—"}
         </div>
         <div>
           <strong>Student:</strong>{" "}
@@ -563,7 +661,9 @@ export default function DocentPage() {
           ) : (
             cohorts.map((c) => (
               <option key={c.id} value={c.id}>
-                {c.title}
+                {c.naam}
+                {c.traject ? ` · ${c.traject}` : ""}
+                {c.uitvoeringId ? ` · ${c.uitvoeringId}` : ""}
               </option>
             ))
           )}
@@ -654,9 +754,9 @@ export default function DocentPage() {
           }}
         >
           <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: 12, color: "#666", marginBottom: 6 }}>teacherId</div>
+            <div style={{ fontSize: 12, color: "#666", marginBottom: 6 }}>teacher</div>
             <input
-              value={TEACHER_ID}
+              value={displayNameFromMe(me)}
               readOnly
               style={{
                 width: "100%",
@@ -796,9 +896,11 @@ export default function DocentPage() {
               const studentScoreText =
                 typeof sScore === "number" ? `${scoreLabel(sScore)} (${sScore})` : "—";
 
-              const teacherScoreValue = tRow.correctedScore; // number | null
+              const teacherScoreValue = tRow.correctedScore;
               const teacherScoreText =
-                teacherScoreValue === null ? "—" : `${scoreLabel(teacherScoreValue)} (${teacherScoreValue})`;
+                teacherScoreValue === null
+                  ? "—"
+                  : `${scoreLabel(teacherScoreValue)} (${teacherScoreValue})`;
 
               return (
                 <div
@@ -814,7 +916,6 @@ export default function DocentPage() {
                   </div>
 
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                    {/* student */}
                     <div
                       style={{
                         padding: 12,
@@ -827,13 +928,16 @@ export default function DocentPage() {
                         Student score
                       </div>
                       <div style={{ fontSize: 13 }}>
-                        <span style={{ color: typeof sScore === "number" ? scoreColor(sScore) : "#666" }}>
+                        <span
+                          style={{
+                            color: typeof sScore === "number" ? scoreColor(sScore) : "#666",
+                          }}
+                        >
                           {studentScoreText}
                         </span>
                       </div>
                     </div>
 
-                    {/* teacher */}
                     <div
                       style={{
                         padding: 12,
@@ -848,7 +952,14 @@ export default function DocentPage() {
                       </div>
 
                       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                        <div style={{ fontSize: 13, fontWeight: 700, color: teacherScoreValue === null ? "#666" : scoreColor(teacherScoreValue) }}>
+                        <div
+                          style={{
+                            fontSize: 13,
+                            fontWeight: 700,
+                            color:
+                              teacherScoreValue === null ? "#666" : scoreColor(teacherScoreValue),
+                          }}
+                        >
                           {teacherScoreText}
                         </div>
 
@@ -913,7 +1024,15 @@ export default function DocentPage() {
                         style={{ width: "100%", marginTop: 10 }}
                       />
 
-                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "#666", marginTop: 6 }}>
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          fontSize: 12,
+                          color: "#666",
+                          marginTop: 6,
+                        }}
+                      >
                         <span>{rubric1VO.scale.min}</span>
                         <span style={{ fontFamily: "monospace" }}>{teacherScoreValue ?? "—"}</span>
                         <span>{rubric1VO.scale.max}</span>
