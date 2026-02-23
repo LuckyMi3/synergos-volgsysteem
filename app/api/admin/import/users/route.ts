@@ -151,13 +151,21 @@ function normalizeRole(raw: string | undefined) {
   return raw!.trim();
 }
 
-function pickRoleEnumValue(enums: any[], preferred: string) {
-  const roleEnum = enums.find(
-    (e: any) => String(e.name).toLowerCase() === "role" || String(e.name).toLowerCase() === "rol"
-  );
+type DmmfEnum = {
+  name: string;
+  values?: ReadonlyArray<{ name: string; dbName?: string }>;
+  dbName?: string;
+  documentation?: string;
+};
+
+function pickRoleEnumValue(enums: ReadonlyArray<DmmfEnum>, preferred: string) {
+  const roleEnum = enums.find((e) => {
+    const n = String(e.name).toLowerCase();
+    return n === "role" || n === "rol";
+  });
   if (!roleEnum) return null;
 
-  const values: string[] = (roleEnum.values || []).map((v: any) => v.name);
+  const values: string[] = (roleEnum.values ?? []).map((v) => String(v.name));
 
   const tryOrder = [
     preferred,
