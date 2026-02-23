@@ -11,20 +11,20 @@ export async function POST(
 
   if (!Array.isArray(teacherIds) || teacherIds.length === 0) {
     return NextResponse.json(
-      { error: "teacherIds (array) is required" },
+      { ok: false, error: "teacherIds (array) is required" },
       { status: 400 }
     );
   }
 
   await prisma.enrollment.createMany({
-  data: teacherIds.map((teacherId: string) => ({
-    cohortId,
-    userId: teacherId,
-  })),
-  skipDuplicates: true,
-});
+    data: teacherIds.map((teacherId: string) => ({
+      cohortId,
+      userId: teacherId,
+    })),
+    skipDuplicates: true,
+  });
 
-    const enrollments = await prisma.enrollment.findMany({
+  const enrollments = await prisma.enrollment.findMany({
     where: {
       cohortId,
       user: { role: { in: ["TEACHER", "ADMIN"] } },
@@ -44,3 +44,4 @@ export async function POST(
   }));
 
   return NextResponse.json({ ok: true, teachers });
+}
