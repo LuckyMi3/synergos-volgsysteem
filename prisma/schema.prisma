@@ -3,8 +3,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 model User {
@@ -65,25 +66,21 @@ model Enrollment {
 model Assessment {
   id String @id @default(cuid())
 
-  // Student waarvoor dit assessment is
   studentId String
   student   User   @relation("StudentAssessments", fields: [studentId], references: [id])
 
-  // Context zoals je UI gebruikt
-  rubricKey String // bijv "1vo"
-  moment    Moment // "M1" | "M2" | "M3"
+  rubricKey String
+  moment    Moment
+
+  submittedAt DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // Student ingevulde scores (raw)
   scores Score[]
-
-  // Docentcorrecties + feedback
   teacherScores  TeacherScore[]
   teacherReviews TeacherReview[]
 
-  // 1 assessment per student per rubricKey per moment
   @@unique([studentId, rubricKey, moment], name: "student_rubric_moment")
 }
 
@@ -92,18 +89,15 @@ model Score {
   assessmentId String
   assessment   Assessment @relation(fields: [assessmentId], references: [id])
 
-  // Per vraag
   themeId    String
   questionId String
 
-  // Student score
   score   Int
   comment String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // 1 row per assessment per vraag
   @@unique([assessmentId, themeId, questionId], name: "assessment_theme_question")
 }
 
@@ -131,8 +125,10 @@ model TeacherScore {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // 1 docent-correctie per assessment per vraag
-  @@unique([assessmentId, teacherId, themeId, questionId], name: "assessment_teacher_theme_question")
+  @@unique(
+    [assessmentId, teacherId, themeId, questionId],
+    name: "assessment_teacher_theme_question"
+  )
 }
 
 model TeacherReview {
@@ -152,7 +148,6 @@ model TeacherReview {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // 1 review per docent per assessment
   @@unique([assessmentId, teacherId], name: "assessment_teacher")
 }
 
