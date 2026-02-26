@@ -6,14 +6,23 @@ import { usePathname } from "next/navigation";
 const tabs = [
   { href: "/admin", label: "Dashboard" },
 
-  // Primair: dit is jouw “router” naar bijna alles
-  { href: "/admin/cohorts", label: "Cohorts" },
+  // Uitvoeringen (DB heet nog cohort)
+  { href: "/admin/cohorts", label: "Uitvoeringen" },
 
-  // Beheer/impersonation startpunt
-  { href: "/admin/users", label: "Users" },
+  // Volledige Apollo import (maakt cohorts + users + enrollments)
+  { href: "/admin/import/apollo", label: "Import Apollo" },
 
-  // Alle admin ingrepen (lock/unlock, imports, etc.)
+  // Gebruikers overzicht / impersonation
+  { href: "/admin/users", label: "Gebruikers" },
+
+  // 1VO losse users import (oude template)
+  { href: "/admin/import/users", label: "Import gebruikers" },
+
+  // Tools overzicht
   { href: "/admin/tools", label: "Tools" },
+
+  // Systeeminstellingen
+  { href: "/admin/system", label: "Systeem" },
 ];
 
 function isActive(pathname: string, href: string) {

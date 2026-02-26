@@ -33,6 +33,24 @@ export async function GET() {
       voornaam: true,
       tussenvoegsel: true,
       achternaam: true,
+
+      // ✅ nieuw: enrollments + cohort (voor rubricKey via cohort.traject)
+      enrollments: {
+        select: {
+          id: true,
+          createdAt: true,
+          cohort: {
+            select: {
+              id: true,
+              naam: true,
+              traject: true,
+              uitvoeringId: true,
+              createdAt: true,
+            },
+          },
+        },
+        orderBy: { createdAt: "desc" }, // nieuwste bovenaan
+      },
     },
   });
 
@@ -47,6 +65,9 @@ export async function GET() {
       role: String(user.role),
       name: fullName(user) || user.email || user.id,
       email: user.email,
+
+      // ✅ nieuw
+      enrollments: user.enrollments,
     },
   });
 }

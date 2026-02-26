@@ -1,111 +1,114 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { rubric1VO } from "@/lib/rubrics/1vo";
 
-type Moment = "M1" | "M2" | "M3";
-
-const ACTIVE_RUBRIC_KEY = "1vo";
-
-type MeUser = {
-  id: string;
-  role: string;
-  name?: string;
-  voornaam?: string;
-  tussenvoegsel?: string | null;
-  achternaam?: string;
-  email?: string | null;
+type UserInfo = {
+  voornaam: string;
+  tussenvoegsel: string | null;
+  achternaam: string;
 };
 
-type PublishedTeacherReview = {
-  id: string;
-  assessmentId: string;
-  teacherId: string;
-  correctedScore: number | null;
-  feedback: string | null;
-  status: "PUBLISHED";
-  publishedAt: string | null;
-  createdAt: string;
-  updatedAt: string;
+type Credential = {
+  exam1Completed: boolean;
+  exam2Completed: boolean;
+  exam3Completed: boolean;
+
+  mbkCompleted: boolean;
+  psbkCompleted: boolean;
+
+  leertherapieCount: number;
+  intervisieCount: number;
+  supervisieCount: number;
+  eindsupervisieDone: boolean;
 };
 
-function scoreLabel(value: number) {
-  const labels = rubric1VO.scale.labels;
-  if (value <= 2) return labels[0];
-  if (value <= 7) return labels[5];
-  return labels[10];
+type EnrollmentRow = {
+  id: string;
+  cohort: {
+    id: string;
+    naam: string;
+    uitvoeringId: string;
+    traject?: string | null;
+  };
+};
+
+type ApiPayload = {
+  ok: boolean;
+  user: UserInfo;
+  enrollments: EnrollmentRow[];
+  maxStage: "BASISJAAR" | "1VO" | "2VO" | "3VO" | null;
+  credential: Credential;
+  error?: string;
+};
+
+const REQUIRED = {
+  leertherapie: 10,
+  intervisie: 10,
+  supervisie: 12,
+};
+
+function stageRank(stage: ApiPayload["maxStage"]) {
+  if (stage === "BASISJAAR") return 0;
+  if (stage === "1VO") return 1;
+  if (stage === "2VO") return 2;
+  if (stage === "3VO") return 3;
+  return -1;
 }
 
-function scoreColor(value: number) {
-  if (value <= 2) return "#c0392b";
-  if (value <= 7) return "#e67e22";
-  return "#27ae60";
+function Dot({ state }: { state: "done" | "current" | "todo" }) {
+  const color = state === "done" ? "#2e7d32" : state === "current" ? "#ef6c00" : "#bbb";
+  return (
+    <span
+      title={state === "done" ? "Afgerond" : state === "current" ? "Huidig" : "Nog niet gestart"}
+      style={{
+        width: 10,
+        height: 10,
+        borderRadius: 999,
+        display: "inline-block",
+        background: color,
+      }}
+    />
+  );
 }
 
-function teacherScoreLabel(value: number | null) {
-  if (value === null) return "–";
-  return `${scoreLabel(value)} (${value})`;
+function CountChip({ value, required }: { value: number; required: number }) {
+  const color = value >= required ? "#2e7d32" : value === 0 ? "#c62828" : "#ef6c00";
+  return <span style={{ color }}>{value}/{required}</span>;
 }
 
-function teacherScoreColor(value: number | null) {
-  if (value === null) return "#999";
-  return scoreColor(value);
-}
+export default function StudentDashboardPage() {
+  const [status, setStatus] = useState("Laden...");
+  const [data, setData] = useState<ApiPayload | null>(null);
 
-function displayNameFromMe(me: MeUser | null) {
-  if (!me) return "—";
-  if (me.name && me.name.trim()) return me.name.trim();
-  const parts = [me.voornaam, me.tussenvoegsel, me.achternaam].filter(Boolean);
-  return parts.join(" ").trim() || me.email || me.id;
-}
+  const [currentUitvoering, setCurrentUitvoering] = useState<string | null>(null);
 
-export default function Page() {
-  const moments: Moment[] = useMemo(() => ["M1", "M2", "M3"], []);
-
-  const [moment, setMoment] = useState<Moment>("M1");
-  const [openTheme, setOpenTheme] = useState<string | null>(null);
-
-  // ✅ effectieve user (impersonated of echte login)
-  const [me, setMe] = useState<MeUser | null>(null);
-  const studentId = me?.id ?? "";
-
-  // scores per UI-key: `${moment}-${themeId}-${questionId}`
-  const [scores, setScores] = useState<Record<string, number>>({});
-
-  // statusmeldingen
-  const [dbStatus, setDbStatus] = useState<string | null>(null);
-
-  // ensured assessmentId voor huidig moment
-  const [assessmentId, setAssessmentId] = useState<string | null>(null);
-
-  // published docent review (1x per assessment/moment)
-  const [publishedReview, setPublishedReview] =
-    useState<PublishedTeacherReview | null>(null);
-
-  // feedback open/closed (1x)
-  const [reviewOpen, setReviewOpen] = useState(false);
-
-  function setScore(key: string, value: number) {
-    setScores((prev) => ({ ...prev, [key]: value }));
-  }
-
-  // ✅ load effective user once
   useEffect(() => {
     let cancelled = false;
 
     (async () => {
       try {
-        const res = await fetch("/api/me");
-        const data = await res.json().catch(() => ({}));
-        if (cancelled) return;
-
-        if (data?.ok && data?.user?.id) {
-          setMe(data.user as MeUser);
-        } else {
-          setDbStatus("Geen ingelogde/impersonated student gevonden.");
+        // 1) huidige uitvoering ophalen (admin-instelling) - ✅ juiste route
+        const rU = await fetch("/api/admin/system/current-uitvoering");
+        const jU = await rU.json().catch(() => ({}));
+        if (!cancelled) {
+          setCurrentUitvoering(rU.ok && jU?.ok ? (jU.uitvoeringId ?? null) : null);
         }
+
+        // 2) dossier ophalen - ✅ geen userId meer (impersonation-aware op server)
+        const res = await fetch("/api/student/dossier");
+        const json = (await res.json().catch(() => ({}))) as ApiPayload;
+
+        if (!res.ok || !json?.ok) {
+          if (!cancelled) setStatus(`Laden faalde (${res.status}): ${json?.error ?? "onbekend"}`);
+          return;
+        }
+
+        if (cancelled) return;
+        setData(json);
+        setStatus("");
       } catch {
-        if (!cancelled) setDbStatus("User laden faalde (netwerk/exception).");
+        if (!cancelled) setStatus("Laden faalde.");
       }
     })();
 
@@ -114,384 +117,274 @@ export default function Page() {
     };
   }, []);
 
-  useEffect(() => {
-    let cancelled = false;
+  const fullName = useMemo(() => {
+    if (!data?.user) return "";
+    const u = data.user;
+    return [u.voornaam, u.tussenvoegsel, u.achternaam].filter(Boolean).join(" ");
+  }, [data]);
 
-    async function ensureAndLoad() {
-      setDbStatus(null);
-      setAssessmentId(null);
-      setPublishedReview(null);
-      setReviewOpen(false);
+  const max = data?.maxStage ?? null;
+  const maxR = stageRank(max);
 
-      if (!studentId) {
-        setDbStatus("Student laden...");
-        return;
-      }
-
-      try {
-        // 1) ensure assessment (voor ingelogde/impersonated student)
-        const ensureRes = await fetch("/api/assessments/ensure", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            studentId,
-            moment,
-            rubricKey: ACTIVE_RUBRIC_KEY,
-          }),
-        });
-
-        const ensureJson = await ensureRes.json().catch(() => ({}));
-
-        if (!ensureRes.ok) {
-          setDbStatus(
-            `Assessment ensure faalde (${ensureRes.status}): ${ensureJson?.error ?? "onbekend"}`
-          );
-          return;
-        }
-
-        const ensuredId = ensureJson?.id as string | undefined;
-
-        if (!ensuredId) {
-          setDbStatus("Assessment ensure gaf geen id terug.");
-          return;
-        }
-
-        if (cancelled) return;
-        setAssessmentId(ensuredId);
-
-        // 2) load scores
-        const res = await fetch(`/api/scores?assessmentId=${encodeURIComponent(ensuredId)}`);
-        if (!res.ok) {
-          setDbStatus(`Scores laden faalde (${res.status}).`);
-          return;
-        }
-
-        const rows: Array<{ themeId: string; questionId: string; score: number }> = await res.json();
-        if (cancelled) return;
-
-        setScores(() => {
-          const next: Record<string, number> = {};
-          for (const r of rows) {
-            const k = `${moment}-${r.themeId}-${r.questionId}`;
-            next[k] = r.score;
-          }
-          return next;
-        });
-
-        // 3) load published teacher review (student ziet alleen PUBLISHED)
-        const reviewRes = await fetch(
-          `/api/teacher-reviews/published?assessmentId=${encodeURIComponent(ensuredId)}`
-        );
-
-        if (reviewRes.ok) {
-          const review = (await reviewRes.json()) as PublishedTeacherReview | null;
-          if (!cancelled) setPublishedReview(review);
-        }
-
-        setDbStatus(`Assessment ensured + scores geladen voor ${moment}.`);
-      } catch {
-        if (!cancelled) setDbStatus("Ensure/laden faalde (netwerk/exception).");
-      }
-    }
-
-    ensureAndLoad();
-    return () => {
-      cancelled = true;
-    };
-  }, [moment, studentId]);
-
-  async function refreshPublishedReview() {
-    if (!assessmentId) return;
-    try {
-      const r = await fetch(
-        `/api/teacher-reviews/published?assessmentId=${encodeURIComponent(assessmentId)}`
-      );
-      if (r.ok) {
-        const review = (await r.json()) as PublishedTeacherReview | null;
-        setPublishedReview(review);
-      }
-    } catch {
-      // best-effort
-    }
+  function yearState(target: number): "done" | "current" | "todo" {
+    if (maxR < 0) return "todo";
+    if (maxR > target) return "done";
+    if (maxR === target) return "current";
+    return "todo";
   }
 
-  async function saveScoreToDb(args: { themeId: string; questionId: string; value: number }) {
-    if (!assessmentId) {
-      setDbStatus(`Kan niet opslaan: assessmentId ontbreekt (${moment}).`);
-      return;
+  const cred = data?.credential ?? null;
+
+  // Zichtbaarheidsregels
+  const showLeertherapie = maxR >= 1; // vanaf 1VO
+  const showPraktijk3VO = maxR >= 3;  // intervisie/supervisie/eindsupervisie vanaf 3VO
+
+  const exam1State =
+    maxR < 1 ? "todo" : cred?.exam1Completed ? "done" : maxR === 1 ? "current" : "todo";
+  const exam2State =
+    maxR < 2 ? "todo" : cred?.exam2Completed ? "done" : maxR === 2 ? "current" : "todo";
+  const exam3State =
+    maxR < 3 ? "todo" : cred?.exam3Completed ? "done" : maxR === 3 ? "current" : "todo";
+
+  // Cohorts groeperen op uitvoeringId, met "huidige uitvoering" bovenaan
+  const groups = useMemo(() => {
+    const map = new Map<string, EnrollmentRow[]>();
+    const list = data?.enrollments ?? [];
+    for (const e of list) {
+      const u = e.cohort.uitvoeringId || "—";
+      if (!map.has(u)) map.set(u, []);
+      map.get(u)!.push(e);
     }
 
-    try {
-      const res = await fetch("/api/score", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          assessmentId,
-          themeId: args.themeId,
-          questionId: args.questionId,
-          score: args.value,
-          comment: null,
-        }),
-      });
+    const uitvoeringen = Array.from(map.keys()).sort((a, b) => a.localeCompare(b));
 
-      if (!res.ok) {
-        setDbStatus(`Opslaan faalde (${res.status}).`);
-        return;
-      }
-
-      setDbStatus(`Opgeslagen in database (${moment}).`);
-    } catch {
-      setDbStatus("Opslaan faalde (netwerk/exception).");
+    if (currentUitvoering && uitvoeringen.includes(currentUitvoering)) {
+      uitvoeringen.splice(uitvoeringen.indexOf(currentUitvoering), 1);
+      uitvoeringen.unshift(currentUitvoering);
     }
-  }
+
+    return uitvoeringen.map((u) => ({
+      uitvoeringId: u,
+      isCurrent: currentUitvoering ? u === currentUitvoering : false,
+      enrollments: (map.get(u) ?? []).slice().sort((a, b) => a.cohort.naam.localeCompare(b.cohort.naam)),
+    }));
+  }, [data, currentUitvoering]);
 
   return (
-    <div style={{ padding: 32, maxWidth: 900, margin: "0 auto" }}>
-      <h1>1VO - Vakopleiding Haptonomie</h1>
+    <main style={{ padding: 32, maxWidth: 1000, margin: "0 auto" }}>
+      <h1 style={{ marginBottom: 8 }}>
+        Dashboard{fullName ? ` · ${fullName}` : ""}
+      </h1>
 
-      <div style={{ marginBottom: 16 }}>
-        <strong>Student:</strong> {displayNameFromMe(me)}
+      <div style={{ color: "#666", marginBottom: 18 }}>
+        {currentUitvoering ? (
+          <>Huidige uitvoering: <span style={{ fontFamily: "monospace" }}>{currentUitvoering}</span>. </>
+        ) : null}
+        Voor het invullen van je volgsysteem gebruik je de knop hieronder.
       </div>
 
-      {/* Meetmoment + refresh */}
-      <div style={{ marginBottom: 24, display: "flex", alignItems: "center", gap: 10 }}>
-        <div>
-          <strong>Meetmoment:</strong>{" "}
-          {moments.map((m) => (
-            <button
-              key={m}
-              onClick={() => setMoment(m)}
-              style={{
-                marginLeft: 8,
-                padding: "6px 12px",
-                background: moment === m ? "#111" : "#eee",
-                color: moment === m ? "#fff" : "#000",
-                border: "none",
-                borderRadius: 6,
-                cursor: "pointer",
-              }}
-            >
-              {m}
-            </button>
-          ))}
-        </div>
-
-        <button
-          onClick={refreshPublishedReview}
-          style={{
-            marginLeft: "auto",
-            padding: "8px 12px",
-            background: "#fff",
-            color: "#111",
-            border: "1px solid #ddd",
-            borderRadius: 8,
-            cursor: "pointer",
-          }}
-          title="Herlaadt gepubliceerde docentfeedback (handig bij testen met twee tabbladen)"
-        >
-          Ververs docentfeedback
-        </button>
-      </div>
-
-      {/* DB status */}
-      <div style={{ marginBottom: 16, fontSize: 12, color: "#666" }}>
-        <div>
-          <strong>AssessmentId ({moment}):</strong>{" "}
-          <span style={{ fontFamily: "monospace" }}>
-            {assessmentId ?? "— (aanmaken/laden...)"}
-          </span>
-        </div>
-        {dbStatus ? <div style={{ marginTop: 6 }}>{dbStatus}</div> : null}
-      </div>
-
-      {/* ✅ Docentreview 1x per meetmoment */}
-      <div style={{ marginBottom: 18 }}>
-        <div
-          style={{
-            padding: 14,
-            border: "1px solid #eee",
-            borderRadius: 12,
-            background: "#fafafa",
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <div style={{ fontWeight: 700 }}>Docent terugkoppeling ({moment})</div>
-            <div style={{ marginLeft: "auto", fontSize: 12, color: "#666" }}>
-              {publishedReview ? "gepubliceerd" : "nog niet gepubliceerd"}
-            </div>
+      {/* CTA */}
+      <div
+        style={{
+          border: "1px solid #eee",
+          borderRadius: 14,
+          padding: 16,
+          background: "#fafafa",
+          display: "flex",
+          alignItems: "center",
+          gap: 16,
+          marginBottom: 22,
+          flexWrap: "wrap",
+        }}
+      >
+        <div style={{ flex: "1 1 320px" }}>
+          <div style={{ fontSize: 14, color: "#111", marginBottom: 6 }}>
+            Volgsysteem invullen
           </div>
+          <div style={{ fontSize: 12, color: "#666" }}>
+            Klik om je reflectie/vragenlijst voor dit moment te openen.
+          </div>
+        </div>
 
-          {publishedReview ? (
-            <>
-              <div style={{ fontSize: 13, marginTop: 10 }}>
-                Docent correctie (overall):{" "}
-                <span
-                  style={{
-                    color: teacherScoreColor(publishedReview.correctedScore),
-                    fontWeight: 600,
-                  }}
-                >
-                  {teacherScoreLabel(publishedReview.correctedScore)}
-                </span>
+        <Link
+          href="/student/volgsysteem"
+          style={{
+            display: "inline-block",
+            padding: "10px 14px",
+            borderRadius: 12,
+            background: "#111",
+            color: "white",
+            textDecoration: "none",
+            fontWeight: 600,
+          }}
+        >
+          Open volgsysteem →
+        </Link>
+      </div>
+
+      {status ? (
+        <div style={{ padding: 12, border: "1px solid #eee", borderRadius: 12, background: "#fff", marginBottom: 20 }}>
+          {status}
+        </div>
+      ) : null}
+
+      {/* Overzicht */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
+        <section style={{ border: "1px solid #eee", borderRadius: 14, padding: 16 }}>
+          <div style={{ marginBottom: 10 }}>Ontwikkelprofiel</div>
+          <div style={{ color: "#666", fontSize: 12 }}>
+            (Komt hier) skillsets + ontwikkeling op basis van ingevulde data.
+          </div>
+        </section>
+
+        <section style={{ border: "1px solid #eee", borderRadius: 14, padding: 16 }}>
+          <div style={{ marginBottom: 10 }}>Opleidingsdossier</div>
+
+          {!data || !cred ? (
+            <div style={{ color: "#666", fontSize: 12 }}>Geen gegevens.</div>
+          ) : (
+            <div style={{ display: "grid", gap: 8 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <span>Basisjaar</span>
+                <Dot state={yearState(0)} />
               </div>
 
-              <button
-                type="button"
-                onClick={() => setReviewOpen((v) => !v)}
-                style={{
-                  marginTop: 10,
-                  padding: "6px 10px",
-                  background: "#fff",
-                  border: "1px solid #ddd",
-                  borderRadius: 8,
-                  cursor: "pointer",
-                  fontSize: 12,
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 8,
-                }}
-              >
-                {reviewOpen ? "▾" : "▸"} Docent feedback
-                {publishedReview.feedback?.trim() ? (
-                  <span
-                    style={{
-                      fontSize: 12,
-                      padding: "2px 8px",
-                      borderRadius: 999,
-                      background: "#f2f2f2",
-                      border: "1px solid #ddd",
-                      color: "#444",
-                    }}
-                  >
-                    beschikbaar
-                  </span>
-                ) : (
-                  <span style={{ fontSize: 12, color: "#666" }}>geen</span>
-                )}
-              </button>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <span>Jaar 1 vakopleiding</span>
+                <Dot state={yearState(1)} />
+              </div>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingLeft: 10 }}>
+                <span>Tentamen Ontwikkelingspsychologie (1VO)</span>
+                <Dot state={exam1State as any} />
+              </div>
 
-              {reviewOpen && (
-                <div style={{ marginTop: 10 }}>
-                  {publishedReview.feedback?.trim() ? (
-                    <div
-                      style={{
-                        whiteSpace: "pre-wrap",
-                        fontSize: 13,
-                        lineHeight: 1.45,
-                        padding: 12,
-                        background: "#fff",
-                        border: "1px solid #eee",
-                        borderRadius: 10,
-                      }}
-                    >
-                      {publishedReview.feedback}
-                    </div>
-                  ) : (
-                    <div style={{ fontSize: 13, color: "#666", marginTop: 6 }}>
-                      Er is geen tekstfeedback gepubliceerd.
-                    </div>
-                  )}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <span>Jaar 2 vakopleiding</span>
+                <Dot state={yearState(2)} />
+              </div>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingLeft: 10 }}>
+                <span>Tentamen Haptonomische Fenomenen (2VO)</span>
+                <Dot state={exam2State as any} />
+              </div>
 
-                  {publishedReview.publishedAt ? (
-                    <div style={{ fontSize: 12, color: "#666", marginTop: 8 }}>
-                      Gepubliceerd op{" "}
-                      {new Date(publishedReview.publishedAt).toLocaleString("nl-NL")} door{" "}
-                      {publishedReview.teacherId}
-                    </div>
-                  ) : null}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <span>Jaar 3 vakopleiding</span>
+                <Dot state={yearState(3)} />
+              </div>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingLeft: 10 }}>
+                <span>Tentamen Psychopathologie (3VO)</span>
+                <Dot state={exam3State as any} />
+              </div>
+
+              <div style={{ height: 1, background: "#eee", margin: "8px 0" }} />
+
+              {showLeertherapie ? (
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <span>Leertherapie</span>
+                  <CountChip value={cred.leertherapieCount} required={REQUIRED.leertherapie} />
                 </div>
-              )}
-            </>
-          ) : (
-            <div style={{ fontSize: 13, color: "#666", marginTop: 8 }}>
-              Er is nog geen gepubliceerde docentreview voor dit meetmoment.
+              ) : null}
+
+              {showPraktijk3VO ? (
+                <>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <span>Intervisie</span>
+                    <CountChip value={cred.intervisieCount} required={REQUIRED.intervisie} />
+                  </div>
+
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <span>Supervisie</span>
+                    <CountChip value={cred.supervisieCount} required={REQUIRED.supervisie} />
+                  </div>
+
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <span>Eindsupervisie</span>
+                    <Dot state={cred.eindsupervisieDone ? "done" : "current"} />
+                  </div>
+                </>
+              ) : null}
+
+              <div style={{ height: 1, background: "#eee", margin: "8px 0" }} />
+
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <span>MBK</span>
+                <Dot state={cred.mbkCompleted ? "done" : "current"} />
+              </div>
+
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <span>PSBK</span>
+                <Dot state={cred.psbkCompleted ? "done" : "current"} />
+              </div>
             </div>
           )}
-        </div>
+        </section>
       </div>
 
-      {/* Thema's */}
-      {rubric1VO.themes.map((theme) => (
-        <div
-          key={theme.id}
-          style={{
-            border: "1px solid #ddd",
-            borderRadius: 8,
-            marginBottom: 12,
-            overflow: "hidden",
-          }}
-        >
-          <div
-            onClick={() => setOpenTheme(openTheme === theme.id ? null : theme.id)}
-            style={{
-              padding: 16,
-              background: "#f5f5f5",
-              cursor: "pointer",
-              fontWeight: 600,
-            }}
-          >
-            {theme.title}
-          </div>
+      {/* Mijn cohorts (uitvoering-gegroepeerd) */}
+      <section style={{ border: "1px solid #eee", borderRadius: 14, padding: 16, marginTop: 24 }}>
+        <div style={{ marginBottom: 10 }}>Mijn cohorts</div>
 
-          {openTheme === theme.id && (
-            <div style={{ padding: 16 }}>
-              {theme.questions.map((q) => {
-                const key = `${moment}-${theme.id}-${q.id}`;
-                const value = scores[key] ?? 5;
+        {!data?.enrollments?.length ? (
+          <div style={{ color: "#666", fontSize: 12 }}>Geen cohorts gevonden.</div>
+        ) : (
+          <div style={{ display: "grid", gap: 14 }}>
+            {groups.map((g) => (
+              <div key={g.uitvoeringId}>
+                <div style={{ fontSize: 12, color: "#666", marginBottom: 8 }}>
+                  {g.isCurrent ? "Huidige uitvoering" : "Eerder"} ·{" "}
+                  <span style={{ fontFamily: "monospace" }}>{g.uitvoeringId}</span>
+                </div>
 
-                return (
-                  <div
-                    key={key}
-                    style={{
-                      marginBottom: 28,
-                      paddingBottom: 16,
-                      borderBottom: "1px solid #eee",
-                    }}
-                  >
-                    <div style={{ marginBottom: 6, fontWeight: 600 }}>{q.text}</div>
-
-                    <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 10 }}>
-                      Jouw huidige inschatting:{" "}
-                      <span style={{ color: scoreColor(value) }}>{scoreLabel(value)}</span>
-                    </div>
-
-                    <input
-                      type="range"
-                      min={rubric1VO.scale.min}
-                      max={rubric1VO.scale.max}
-                      value={value}
-                      onChange={(e) => {
-                        const newValue = Number(e.target.value);
-                        setScore(key, newValue);
-
-                        saveScoreToDb({
-                          themeId: theme.id,
-                          questionId: q.id,
-                          value: newValue,
-                        });
-                      }}
-                      style={{ width: "100%" }}
-                    />
-
+                <div style={{ display: "grid", gap: 10 }}>
+                  {g.enrollments.map((e) => (
                     <div
+                      key={e.id}
                       style={{
                         display: "flex",
-                        justifyContent: "space-between",
-                        fontSize: 12,
-                        marginTop: 6,
+                        alignItems: "center",
+                        gap: 12,
+                        padding: "10px 12px",
+                        border: "1px solid #eee",
+                        borderRadius: 12,
+                        background: g.isCurrent ? "#fafafa" : "#fff",
+                        flexWrap: "wrap",
                       }}
                     >
-                      <span style={{ color: "#c0392b" }}>onbekwaam / niet eigen</span>
-                      <span style={{ color: "#e67e22" }}>in ontwikkeling</span>
-                      <span style={{ color: "#27ae60" }}>bekwaam / eigen</span>
+                      <div style={{ flex: "1 1 320px" }}>
+                        <div style={{ fontWeight: 600 }}>{e.cohort.naam}</div>
+                        <div style={{ fontSize: 12, color: "#666" }}>
+                          uitvoering {e.cohort.uitvoeringId}
+                        </div>
+                      </div>
+
+                      <Link
+                        href={`/student/volgsysteem?enrollmentId=${encodeURIComponent(e.id)}`}
+                        style={{
+                          display: "inline-block",
+                          padding: "8px 10px",
+                          borderRadius: 10,
+                          border: "1px solid #ddd",
+                          background: "#fff",
+                          color: "#111",
+                          textDecoration: "none",
+                          fontSize: 13,
+                        }}
+                        title={g.isCurrent ? "Open om in te vullen" : "Open archief (alleen lezen)"}
+                      >
+                        {g.isCurrent ? "Open →" : "Archief →"}
+                      </Link>
                     </div>
-                  </div>
-                );
-              })}
+                  ))}
+                </div>
+              </div>
+            ))}
+
+            <div style={{ fontSize: 12, color: "#666" }}>
+              Archief is read-only: je ziet alleen meetmomenten die destijds zijn ingevuld/ingeleverd.
             </div>
-          )}
-        </div>
-      ))}
-    </div>
+          </div>
+        )}
+      </section>
+    </main>
   );
 }

@@ -3,9 +3,9 @@ generator client {
 }
 
 datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")
-  directUrl = env("DIRECT_URL")
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  // directUrl bewust weggelaten omdat DIRECT_URL nu niet in .env staat
 }
 
 model User {
@@ -30,16 +30,37 @@ model User {
 
   // Teacher publish gate per assessment
   teacherReviews TeacherReview[]
+
+  // ✅ Credentials (1-op-1)
+  credential StudentCredential?
+}
+
+/**
+ * =========================
+ * Uitvoering (schooljaar)
+ * =========================
+ * Voorbeeld: "25/26"
+ */
+model Uitvoering {
+  id        String   @id
+  createdAt DateTime @default(now())
+
+  cohorts   Cohort[]
 }
 
 model Cohort {
   id           String   @id @default(cuid())
-  uitvoeringId String   @unique
+  uitvoeringId String
+  uitvoering   Uitvoering @relation(fields: [uitvoeringId], references: [id])
+
   naam         String
   traject      String?
   createdAt    DateTime @default(now())
 
-  enrollments Enrollment[]
+  enrollments  Enrollment[]
+
+  // ✅ meerdere cohorts binnen dezelfde uitvoering toegestaan
+  @@unique([uitvoeringId, naam], name: "uitvoeringId_naam")
 }
 
 model Enrollment {
@@ -67,7 +88,7 @@ model Assessment {
   id String @id @default(cuid())
 
   studentId String
-  student   User   @relation("StudentAssessments", fields: [studentId], references: [id])
+  student   User @relation("StudentAssessments", fields: [studentId], references: [id])
 
   rubricKey String
   moment    Moment
@@ -77,7 +98,7 @@ model Assessment {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  scores Score[]
+  scores         Score[]
   teacherScores  TeacherScore[]
   teacherReviews TeacherReview[]
 
@@ -114,7 +135,7 @@ model TeacherScore {
   assessment   Assessment @relation(fields: [assessmentId], references: [id])
 
   teacherId String
-  teacher   User   @relation(fields: [teacherId], references: [id])
+  teacher   User @relation(fields: [teacherId], references: [id])
 
   themeId    String
   questionId String
@@ -125,10 +146,8 @@ model TeacherScore {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@unique(
-    [assessmentId, teacherId, themeId, questionId],
-    name: "assessment_teacher_theme_question"
-  )
+  // ✅ Prisma-proof op 1 regel
+  @@unique([assessmentId, teacherId, themeId, questionId], name: "assessment_teacher_theme_question")
 }
 
 model TeacherReview {
@@ -138,7 +157,7 @@ model TeacherReview {
   assessment   Assessment @relation(fields: [assessmentId], references: [id])
 
   teacherId String
-  teacher   User   @relation(fields: [teacherId], references: [id])
+  teacher   User @relation(fields: [teacherId], references: [id])
 
   correctedScore Int?
   feedback       String?
@@ -166,4 +185,34 @@ enum Moment {
 enum ReviewStatus {
   DRAFT
   PUBLISHED
+}
+
+model StudentCredential {
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id])
+
+  // Tentamens
+  exam1Completed Boolean @default(false) // Ontwikkelingspsychologie
+  exam2Completed Boolean @default(false) // Haptonomische Fenomenen
+  exam3Completed Boolean @default(false) // Psychopathologie
+
+  // Basiskennis
+  mbkCompleted  Boolean @default(false)
+  psbkCompleted Boolean @default(false)
+
+  // Praktijkvorming
+  leertherapieCount  Int     @default(0)  // vereist 10
+  intervisieCount    Int     @default(0)  // vereist 10
+  supervisieCount    Int     @default(0)  // vereist 12
+  eindsupervisieDone Boolean @default(false)
+
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+}
+
+model SystemSetting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
 }

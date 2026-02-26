@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { rubric1VO } from "@/lib/rubrics/1vo";
+import { getRubric } from "@/lib/rubrics";
 
 type Moment = "M1" | "M2" | "M3";
 
@@ -63,8 +63,6 @@ type MeUser = {
   email?: string | null;
 };
 
-const ACTIVE_RUBRIC_KEY = "1vo";
-
 function badgeStyle(status: ReviewStatus | "NONE") {
   if (status === "PUBLISHED")
     return { background: "#111", color: "#fff", border: "1px solid #111" };
@@ -77,25 +75,59 @@ function badgeStyle(status: ReviewStatus | "NONE") {
   return { background: "#f3f4f6", color: "#374151", border: "1px solid #e5e7eb" };
 }
 
-function clampToScale(n: number) {
-  const min = rubric1VO.scale.min;
-  const max = rubric1VO.scale.max;
+function clamp(n: number, min: number, max: number) {
   if (n < min) return min;
   if (n > max) return max;
   return n;
 }
 
-function scoreLabel(value: number) {
-  const labels = rubric1VO.scale.labels;
-  if (value <= 2) return labels[0];
-  if (value <= 7) return labels[5];
-  return labels[10];
+function labelForValue(rubric: any, value: number) {
+  const min = Number(rubric?.scale?.min ?? 0);
+  const max = Number(rubric?.scale?.max ?? 10);
+  const v = clamp(value, min, max);
+
+  const labels = rubric?.scale?.labels;
+
+  if (Array.isArray(labels)) {
+    const idx = v - min;
+    return labels[idx] ?? String(v);
+  }
+
+  if (labels && typeof labels === "object") {
+    const keys = Object.keys(labels)
+      .map((k) => Number(k))
+      .filter((k) => Number.isFinite(k))
+      .sort((a, b) => a - b);
+
+    if (keys.length === 0) return String(v);
+    if (labels[v] != null) return String(labels[v]);
+
+    let chosen = keys[0];
+    for (const k of keys) {
+      if (k <= v) chosen = k;
+      else break;
+    }
+    return String(labels[chosen] ?? v);
+  }
+
+  return String(v);
 }
 
-function scoreColor(value: number) {
-  if (value <= 2) return "#c0392b";
-  if (value <= 7) return "#e67e22";
+function colorForValue(rubric: any, value: number) {
+  const min = Number(rubric?.scale?.min ?? 0);
+  const max = Number(rubric?.scale?.max ?? 10);
+  const v = clamp(value, min, max);
+  const ratio = max === min ? 1 : (v - min) / (max - min);
+
+  if (ratio <= 0.3) return "#c0392b";
+  if (ratio <= 0.7) return "#e67e22";
   return "#27ae60";
+}
+
+function defaultValueForRubric(rubric: any) {
+  const min = Number(rubric?.scale?.min ?? 0);
+  const max = Number(rubric?.scale?.max ?? 10);
+  return Math.round((min + max) / 2);
 }
 
 function k(themeId: string, questionId: string) {
@@ -191,6 +223,10 @@ export default function DocentPage() {
   const selectedStudent = students.find((s) => s.id === selectedStudentId) || null;
   const selectedCohort = cohorts.find((c) => c.id === selectedCohortId) || null;
 
+  // ✅ rubricKey volgt gekozen cohort
+  const rubricKey = (selectedCohort?.traject || "1vo").toLowerCase().trim();
+  const rubric = useMemo(() => getRubric(rubricKey), [rubricKey]);
+
   function setRowState(key: string, state: SaveState) {
     setRowSaveState((prev) => ({ ...prev, [key]: state }));
   }
@@ -234,7 +270,7 @@ export default function DocentPage() {
 
     setReviewMsg("");
 
-    // ✅ FIX: teacherId meegeven (multi-docent teacherReview)
+    // ✅ teacherId meegeven (multi-docent teacherReview)
     const res = await fetch(
       `/api/teacher-reviews?assessmentId=${encodeURIComponent(
         forAssessmentId
@@ -280,7 +316,7 @@ export default function DocentPage() {
       }
       setTeacherScoreMap(next);
     } catch {
-      // ignore: UI blijft werken
+      // ignore
     }
   }
 
@@ -369,7 +405,7 @@ export default function DocentPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [teacherId]);
 
-  // 2) load students for selected cohort (robust response shapes)
+  // 2) load students for selected cohort
   useEffect(() => {
     let cancelled = false;
 
@@ -444,7 +480,7 @@ export default function DocentPage() {
           body: JSON.stringify({
             studentId: selectedStudentId,
             moment,
-            rubricKey: ACTIVE_RUBRIC_KEY,
+            rubricKey, // ✅ dynamisch per cohort
           }),
         });
 
@@ -490,7 +526,7 @@ export default function DocentPage() {
     return () => {
       cancelled = true;
     };
-  }, [selectedStudentId, moment, selectedCohortId, teacherId]);
+  }, [selectedStudentId, moment, selectedCohortId, teacherId, rubricKey]);
 
   function getStudentScore(themeId: string, questionId: string) {
     return scoreMap[k(themeId, questionId)];
@@ -633,6 +669,10 @@ export default function DocentPage() {
         <div>
           <strong>Cohort:</strong>{" "}
           {selectedCohort ? `${selectedCohort.naam} (${selectedCohort.id})` : "—"}
+        </div>
+        <div>
+          <strong>Traject/rubricKey:</strong>{" "}
+          <span style={{ fontFamily: "monospace" }}>{rubricKey}</span>
         </div>
         <div>
           <strong>Student:</strong>{" "}
@@ -870,7 +910,7 @@ export default function DocentPage() {
       </div>
 
       {/* Per theme cards, per vraag docentcorrectie */}
-      {rubric1VO.themes.map((theme: any) => (
+      {rubric.themes.map((theme: any) => (
         <div
           key={theme.id}
           style={{
@@ -894,13 +934,21 @@ export default function DocentPage() {
               const saveState = rowSaveState[rowKey];
 
               const studentScoreText =
-                typeof sScore === "number" ? `${scoreLabel(sScore)} (${sScore})` : "—";
+                typeof sScore === "number" ? `${labelForValue(rubric, sScore)} (${sScore})` : "—";
 
               const teacherScoreValue = tRow.correctedScore;
               const teacherScoreText =
                 teacherScoreValue === null
                   ? "—"
-                  : `${scoreLabel(teacherScoreValue)} (${teacherScoreValue})`;
+                  : `${labelForValue(rubric, teacherScoreValue)} (${teacherScoreValue})`;
+
+              const min = Number(rubric?.scale?.min ?? 0);
+              const max = Number(rubric?.scale?.max ?? 10);
+              const sliderValue = clamp(
+                teacherScoreValue ?? defaultValueForRubric(rubric),
+                min,
+                max
+              );
 
               return (
                 <div
@@ -930,7 +978,7 @@ export default function DocentPage() {
                       <div style={{ fontSize: 13 }}>
                         <span
                           style={{
-                            color: typeof sScore === "number" ? scoreColor(sScore) : "#666",
+                            color: typeof sScore === "number" ? colorForValue(rubric, sScore) : "#666",
                           }}
                         >
                           {studentScoreText}
@@ -957,7 +1005,7 @@ export default function DocentPage() {
                             fontSize: 13,
                             fontWeight: 700,
                             color:
-                              teacherScoreValue === null ? "#666" : scoreColor(teacherScoreValue),
+                              teacherScoreValue === null ? "#666" : colorForValue(rubric, teacherScoreValue),
                           }}
                         >
                           {teacherScoreText}
@@ -1008,11 +1056,11 @@ export default function DocentPage() {
 
                       <input
                         type="range"
-                        min={rubric1VO.scale.min}
-                        max={rubric1VO.scale.max}
-                        value={clampToScale(teacherScoreValue ?? 5)}
+                        min={min}
+                        max={max}
+                        value={sliderValue}
                         onChange={(e) => {
-                          const v = clampToScale(Number(e.target.value));
+                          const v = clamp(Number(e.target.value), min, max);
                           scheduleSaveTeacherScore({
                             themeId: theme.id,
                             questionId: q.id,
@@ -1033,9 +1081,9 @@ export default function DocentPage() {
                           marginTop: 6,
                         }}
                       >
-                        <span>{rubric1VO.scale.min}</span>
+                        <span>{min}</span>
                         <span style={{ fontFamily: "monospace" }}>{teacherScoreValue ?? "—"}</span>
-                        <span>{rubric1VO.scale.max}</span>
+                        <span>{max}</span>
                       </div>
 
                       {isOpen && (

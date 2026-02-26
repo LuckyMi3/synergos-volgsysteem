@@ -14,9 +14,34 @@ export default async function AdminCohortsPage() {
 
   return (
     <div style={{ padding: 24 }}>
-      <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
-        <h1 style={{ fontSize: 24, fontWeight: 700, margin: 0 }}>Cohorts</h1>
-        <span style={{ opacity: 0.7 }}>({cohorts.length})</span>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "baseline",
+          justifyContent: "space-between",
+          gap: 12,
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
+          <h1 style={{ fontSize: 24, fontWeight: 700, margin: 0 }}>
+            Uitvoeringen
+          </h1>
+          <span style={{ opacity: 0.7 }}>({cohorts.length})</span>
+        </div>
+
+        <Link
+          href="/admin/cohorts/import"
+          style={{
+            fontSize: 12,
+            textDecoration: "none",
+            border: "1px solid rgba(0,0,0,0.18)",
+            padding: "8px 10px",
+            borderRadius: 10,
+            background: "white",
+          }}
+        >
+          Import (Apollo) →
+        </Link>
       </div>
 
       <p style={{ marginTop: 8, marginBottom: 16, opacity: 0.8 }}>
@@ -36,7 +61,7 @@ export default async function AdminCohortsPage() {
               <th style={{ padding: 12 }}>Naam</th>
               <th style={{ padding: 12 }}>Uitvoering</th>
               <th style={{ padding: 12 }}>Traject</th>
-              <th style={{ padding: 12 }}>Students</th>
+              <th style={{ padding: 12 }}>Studenten</th>
               <th style={{ padding: 12 }}>Aangemaakt</th>
             </tr>
           </thead>
@@ -47,7 +72,10 @@ export default async function AdminCohortsPage() {
                 style={{ borderTop: "1px solid rgba(0,0,0,0.08)" }}
               >
                 <td style={{ padding: 12, fontWeight: 600 }}>
-                  <Link href={`/admin/cohorts/${c.id}`} style={{ textDecoration: "none" }}>
+                  <Link
+                    href={`/admin/cohorts/${c.id}`}
+                    style={{ textDecoration: "none" }}
+                  >
                     {c.naam}
                   </Link>
                 </td>
@@ -62,7 +90,7 @@ export default async function AdminCohortsPage() {
             {cohorts.length === 0 && (
               <tr>
                 <td style={{ padding: 12, opacity: 0.7 }} colSpan={5}>
-                  Geen cohorts gevonden.
+                  Geen uitvoeringen gevonden.
                 </td>
               </tr>
             )}
@@ -71,7 +99,8 @@ export default async function AdminCohortsPage() {
       </div>
 
       <div style={{ marginTop: 16, opacity: 0.7, fontSize: 12 }}>
-        Tip: als je hierna de enrollments + users wil tonen, doen we dat op de detailpagina
+        Tip: als je hierna de enrollments + users wil tonen, doen we dat op de
+        detailpagina
         <code style={{ marginLeft: 6 }}>/admin/cohorts/[id]</code>.
       </div>
     </div>
