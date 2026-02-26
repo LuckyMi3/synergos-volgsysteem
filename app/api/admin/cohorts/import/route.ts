@@ -125,8 +125,7 @@ export async function POST(req: Request) {
       return NextResponse.json(
         {
           ok: false,
-          error:
-            "Kolom 'naam' niet gevonden. Verwacht header zoals: naam / title / name.",
+          error: "Kolom 'naam' niet gevonden. Verwacht header zoals: naam / title / name.",
           headers,
         },
         { status: 400 }
@@ -156,26 +155,31 @@ export async function POST(req: Request) {
       }
 
       try {
-        const exists = await prisma.cohort.findUnique({
+        // ✅ NIET findUnique op uitvoeringId (schema heeft geen unique daarop)
+        const existing = await prisma.cohort.findFirst({
           where: { uitvoeringId },
           select: { id: true },
         });
 
-        await prisma.cohort.upsert({
-          where: { uitvoeringId },
-          update: {
-            naam,
-            traject: traject || null,
-          },
-          create: {
-            uitvoeringId,
-            naam,
-            traject: traject || null,
-          },
-        });
-
-        if (exists) updated++;
-        else created++;
+        if (existing) {
+          await prisma.cohort.update({
+            where: { id: existing.id },
+            data: {
+              naam,
+              traject: traject || null,
+            },
+          });
+          updated++;
+        } else {
+          await prisma.cohort.create({
+            data: {
+              uitvoeringId,
+              naam,
+              traject: traject || null,
+            },
+          });
+          created++;
+        }
       } catch (e: any) {
         errors.push({
           line: li + 1,
