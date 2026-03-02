@@ -19,6 +19,9 @@ model User {
   role          Role
   createdAt     DateTime @default(now())
 
+  // Auth (V1: eenvoudige login, admin zet/reset wachtwoord)
+  passwordHash  String?
+
   // Cohort membership (student/teacher/admin)
   enrollments Enrollment[]
 
@@ -37,21 +40,24 @@ model User {
 
 /**
  * =========================
- * Uitvoering (schooljaar)
+ * Uitvoering (schooljaar / “25/26” etc.)
  * =========================
- * Voorbeeld: "25/26"
+ * Bestaat in je DB (drift). Cohort.uitvoeringId verwijst hiernaar.
  */
 model Uitvoering {
-  id        String   @id
+  id        String   @id // bijv. "25/26"
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   cohorts   Cohort[]
 }
 
 model Cohort {
   id           String   @id @default(cuid())
+
+  // FK -> Uitvoering.id (drift fix)
   uitvoeringId String
-  uitvoering   Uitvoering @relation(fields: [uitvoeringId], references: [id])
+  uitvoering   Uitvoering @relation(fields: [uitvoeringId], references: [id], onDelete: Restrict)
 
   naam         String
   traject      String?
@@ -59,7 +65,7 @@ model Cohort {
 
   enrollments  Enrollment[]
 
-  // ✅ meerdere cohorts binnen dezelfde uitvoering toegestaan
+  // Drift fix: uniek per uitvoering + cohortnaam
   @@unique([uitvoeringId, naam], name: "uitvoeringId_naam")
 }
 
@@ -146,7 +152,6 @@ model TeacherScore {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // ✅ Prisma-proof op 1 regel
   @@unique([assessmentId, teacherId, themeId, questionId], name: "assessment_teacher_theme_question")
 }
 
@@ -170,23 +175,6 @@ model TeacherReview {
   @@unique([assessmentId, teacherId], name: "assessment_teacher")
 }
 
-enum Role {
-  STUDENT
-  TEACHER
-  ADMIN
-}
-
-enum Moment {
-  M1
-  M2
-  M3
-}
-
-enum ReviewStatus {
-  DRAFT
-  PUBLISHED
-}
-
 model StudentCredential {
   id     String @id @default(cuid())
   userId String @unique
@@ -202,9 +190,9 @@ model StudentCredential {
   psbkCompleted Boolean @default(false)
 
   // Praktijkvorming
-  leertherapieCount  Int     @default(0)  // vereist 10
-  intervisieCount    Int     @default(0)  // vereist 10
-  supervisieCount    Int     @default(0)  // vereist 12
+  leertherapieCount  Int     @default(0)    // vereist 10
+  intervisieCount    Int     @default(0)    // vereist 10
+  supervisieCount    Int     @default(0)    // vereist 12
   eindsupervisieDone Boolean @default(false)
 
   updatedAt DateTime @updatedAt
@@ -215,4 +203,21 @@ model SystemSetting {
   key       String   @id
   value     String
   updatedAt DateTime @updatedAt
+}
+
+enum Role {
+  STUDENT
+  TEACHER
+  ADMIN
+}
+
+enum Moment {
+  M1
+  M2
+  M3
+}
+
+enum ReviewStatus {
+  DRAFT
+  PUBLISHED
 }
