@@ -16,6 +16,12 @@ const MODES: Array<{
   { value: "ADMIN", label: "Admin", endpoint: "/api/admin/auth/login", redirectTo: "/admin" },
 ];
 
+const ROLE_REDIRECT: Record<string, string> = {
+  STUDENT: "/student",
+  TEACHER: "/docent",
+  ADMIN: "/admin",
+};
+
 function cx(...parts: Array<string | false | null | undefined>) {
   return parts.filter(Boolean).join(" ");
 }
@@ -57,8 +63,10 @@ export default function LoginPage() {
         return;
       }
 
-      router.push(active.redirectTo);
-      router.refresh();
+        const serverRole = data?.user?.role ? String(data.user.role) : null;
+              const redirectTo = (serverRole && ROLE_REDIRECT[serverRole]) || active.redirectTo;
+              router.push(redirectTo);
+              router.refresh();
     } catch {
       setError("Inloggen faalde (netwerkfout).");
       setSubmitting(false);
