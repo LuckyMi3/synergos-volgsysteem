@@ -1,13 +1,12 @@
 // lib/rubrics/2vo.ts
 // Bron: "Beoordelingsformulier Vakopleiding Haptonomie – Jaar 2 (2VO)" (2026)
 // Vraagteksten in ik-vorm, zelfde stijl als 1VO.
-// Scale 1–5 conform formulier.
-
+// Scale 1–10 (schuifjes), conform 1VO.
 export type RubricScale = {
     min: number;
     max: number;
-    labels: string[]; // index 0..(max-min)
-};
+  labels: string[] | Record<number, string>; // array (index 0..(max-min)) of sparse object (bv. {1: "...", 10: "..."})
+    };
 
 export type RubricQuestion = {
     id: string;
@@ -34,14 +33,14 @@ export const rubric2VO: RubricDefinition = {
     version: "2026-02-25",
     scale: {
           min: 1,
-          max: 5,
-          labels: [
-                  "Onvoldoende / niet zichtbaar",
-                  "In ontwikkeling",
-                  "Voldoende (niveau jaar 2)",
-                  "Goed",
-                  "Zeer goed / geïntegreerd en bewust ingezet",
-                ],
+                    max: 10,
+                    labels: {
+                                        1: "Onvoldoende / niet zichtbaar",
+                                        3: "In ontwikkeling",
+                                        5: "Voldoende (niveau jaar 2)",
+                                        7: "Goed",
+                                        10: "Zeer goed / geïntegreerd en bewust ingezet",
+                    },
     },
     themes: [
       {
