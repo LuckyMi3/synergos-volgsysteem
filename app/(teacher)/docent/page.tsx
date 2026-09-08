@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { getRubric } from "@/lib/rubrics";
@@ -201,7 +201,7 @@ function momentLabel(m: Moment) {
   return m;
 }
 
-export default function DocentPage() {
+function DocentPageInner() {
   const searchParams = useSearchParams();
   const urlCohortId = searchParams.get("cohortId") || "";
   const urlStudentId = searchParams.get("studentId") || "";
@@ -1277,5 +1277,13 @@ export default function DocentPage() {
         </div>
       ))}
     </main>
+  );
+}
+
+export default function DocentPage() {
+  return (
+    <Suspense fallback={<div style={{ padding: 32 }}>Laden...</div>}>
+      <DocentPageInner />
+    </Suspense>
   );
 }
