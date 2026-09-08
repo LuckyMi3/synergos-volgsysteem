@@ -1,4 +1,4 @@
-# Synergos Volgsysteem — V2 (work copy)
+# Synergos Volgsysteem — V2 (work copy) (staging environment)
 
 This is the **V2 work copy** of the Synergos Volgsysteem.
 
