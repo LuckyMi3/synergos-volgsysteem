@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import Link from "next/link";
 import { getRubric } from "@/lib/rubrics";
 
 type Moment = "M1" | "M2" | "M3";
@@ -61,6 +63,17 @@ type MeUser = {
   tussenvoegsel?: string | null;
   achternaam?: string;
   email?: string | null;
+};
+
+type HistoryRow = {
+  id: string;
+  rubricKey: string;
+  moment: Moment;
+  createdAt: string;
+  submittedAt: string | null;
+  scoreCount: number;
+  published: boolean;
+  draft: boolean;
 };
 
 function badgeStyle(status: ReviewStatus | "NONE") {
@@ -184,7 +197,15 @@ function normalizeStudentOptions(json: any): StudentOption[] {
   return normalized;
 }
 
+function momentLabel(m: Moment) {
+  return m;
+}
+
 export default function DocentPage() {
+  const searchParams = useSearchParams();
+  const urlCohortId = searchParams.get("cohortId") || "";
+  const urlStudentId = searchParams.get("studentId") || "";
+
   const moments: Moment[] = useMemo(() => ["M1", "M2", "M3"], []);
   const [moment, setMoment] = useState<Moment>("M1");
 
@@ -217,6 +238,11 @@ export default function DocentPage() {
   const [rowSaveState, setRowSaveState] = useState<Record<string, SaveState>>({});
   const [openRow, setOpenRow] = useState<Record<string, boolean>>({});
 
+  // ✅ Geschiedenis (eerdere rondes/jaren) van de gekozen student
+  const [history, setHistory] = useState<HistoryRow[]>([]);
+  const [historyOpen, setHistoryOpen] = useState<boolean>(false);
+  const [historyStatus, setHistoryStatus] = useState<string | null>(null);
+
   // debounce timers per row
   const saveTimersRef = useRef<Record<string, any>>({});
 
@@ -233,6 +259,23 @@ export default function DocentPage() {
 
   function toggleRow(key: string) {
     setOpenRow((prev) => ({ ...prev, [key]: !(prev[key] ?? false) }));
+  }
+
+  async function loadHistory(forStudentId: string) {
+    setHistoryStatus("Geschiedenis laden...");
+    setHistory([]);
+    try {
+      const res = await fetch(`/api/students/${encodeURIComponent(forStudentId)}/history`);
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setHistoryStatus(`Geschiedenis laden faalde (${res.status}).`);
+        return;
+      }
+      setHistory(Array.isArray(json?.assessments) ? json.assessments : []);
+      setHistoryStatus(null);
+    } catch {
+      setHistoryStatus("Geschiedenis laden faalde (netwerk/exception).");
+    }
   }
 
   // ✅ load effective user once
@@ -391,7 +434,11 @@ export default function DocentPage() {
         if (cancelled) return;
 
         setCohorts(data);
-        setSelectedCohortId((prev) => (prev ? prev : data[0]?.id ?? ""));
+        setSelectedCohortId((prev) => {
+          if (prev) return prev;
+          if (urlCohortId && data.some((c) => c.id === urlCohortId)) return urlCohortId;
+          return data[0]?.id ?? "";
+        });
         setStatus(null);
       } catch {
         if (!cancelled) setStatus("Cohorts laden faalde (netwerk/exception).");
@@ -435,7 +482,14 @@ export default function DocentPage() {
         if (cancelled) return;
 
         setStudents(normalized);
-        if (normalized.length > 0) setSelectedStudentId(normalized[0].id);
+
+        if (normalized.length > 0) {
+          const preferred =
+            urlStudentId && normalized.some((s) => s.id === urlStudentId)
+              ? urlStudentId
+              : normalized[0].id;
+          setSelectedStudentId(preferred);
+        }
         setStatus(null);
       } catch {
         if (!cancelled) setStatus("Studenten laden faalde (netwerk/exception).");
@@ -527,6 +581,17 @@ export default function DocentPage() {
       cancelled = true;
     };
   }, [selectedStudentId, moment, selectedCohortId, teacherId, rubricKey]);
+
+  // 4) load history whenever the selected student changes
+  useEffect(() => {
+    setHistory([]);
+    setHistoryOpen(false);
+    setHistoryStatus(null);
+    if (selectedStudentId) {
+      loadHistory(selectedStudentId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedStudentId]);
 
   function getStudentScore(themeId: string, questionId: string) {
     return scoreMap[k(themeId, questionId)];
@@ -659,7 +724,19 @@ export default function DocentPage() {
 
   return (
     <main style={{ padding: 32, maxWidth: 900, margin: "0 auto" }}>
-      <h1 style={{ fontSize: 24, marginBottom: 16 }}>Volgsysteem docentenfeedback</h1>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          marginBottom: 16,
+        }}
+      >
+        <h1 style={{ fontSize: 24 }}>Volgsysteem docentenfeedback</h1>
+        <Link href="/docent/overzicht" style={{ fontSize: 13, color: "#666" }}>
+          ← Studentenoverzicht
+        </Link>
+      </div>
 
       {/* status */}
       <div style={{ marginBottom: 16, fontSize: 12, color: "#666" }}>
@@ -728,6 +805,78 @@ export default function DocentPage() {
             ))
           )}
         </select>
+      </div>
+
+      {/* Geschiedenis (eerdere rondes/jaren) */}
+      <div
+        style={{
+          border: "1px solid #ddd",
+          borderRadius: 12,
+          marginBottom: 20,
+          overflow: "hidden",
+        }}
+      >
+        <button
+          type="button"
+          onClick={() => setHistoryOpen((v) => !v)}
+          style={{
+            width: "100%",
+            textAlign: "left",
+            padding: 14,
+            background: "#f5f5f5",
+            fontWeight: 800,
+            border: "none",
+            cursor: "pointer",
+          }}
+        >
+          {historyOpen ? "▾" : "▸"} Geschiedenis van deze student ({history.length})
+        </button>
+
+        {historyOpen && (
+          <div style={{ padding: 14 }}>
+            {historyStatus ? (
+              <div style={{ fontSize: 12, color: "#666" }}>{historyStatus}</div>
+            ) : history.length === 0 ? (
+              <div style={{ fontSize: 12, color: "#666" }}>
+                Geen eerdere rondes gevonden voor deze student.
+              </div>
+            ) : (
+              <table style={{ width: "100%", fontSize: 13, borderCollapse: "collapse" }}>
+                <thead>
+                  <tr style={{ textAlign: "left", color: "#666" }}>
+                    <th style={{ padding: "6px 8px" }}>Datum</th>
+                    <th style={{ padding: "6px 8px" }}>Rubric</th>
+                    <th style={{ padding: "6px 8px" }}>Moment</th>
+                    <th style={{ padding: "6px 8px" }}>Vragen ingevuld</th>
+                    <th style={{ padding: "6px 8px" }}>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {history.map((h) => (
+                    <tr key={h.id} style={{ borderTop: "1px solid #eee" }}>
+                      <td style={{ padding: "6px 8px" }}>
+                        {new Date(h.createdAt).toLocaleDateString("nl-NL")}
+                      </td>
+                      <td style={{ padding: "6px 8px", fontFamily: "monospace" }}>
+                        {h.rubricKey}
+                      </td>
+                      <td style={{ padding: "6px 8px" }}>{momentLabel(h.moment)}</td>
+                      <td style={{ padding: "6px 8px" }}>{h.scoreCount}</td>
+                      <td style={{ padding: "6px 8px" }}>
+                        {h.published ? "Gepubliceerd" : h.draft ? "Concept" : "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+            <div style={{ fontSize: 11, color: "#999", marginTop: 10 }}>
+              Let op: hier staan alle rondes die ooit voor deze student zijn aangemaakt, ook uit
+              vorige schooljaren — het systeem koppelt beoordelingen aan de student, niet aan een
+              specifiek jaar.
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Moment selectie */}
@@ -1079,7 +1228,7 @@ export default function DocentPage() {
                           fontSize: 12,
                           color: "#666",
                           marginTop: 6,
-                        }}
+                      }}
                       >
                         <span>{min}</span>
                         <span style={{ fontFamily: "monospace" }}>{teacherScoreValue ?? "—"}</span>
