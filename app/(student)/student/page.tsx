@@ -1018,10 +1018,12 @@ export default function StudentDashboardPage() {
       ) : null}
 
       {SHOW_PROFIELEN_EN_DOSSIER ? (
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
         <section style={{ border: "1px solid #eee", borderRadius: 14, padding: 16 }}>
           <div style={{ marginBottom: 12, fontWeight: 900 }}>Profielen</div>
 
           <div style={{ display: "grid", gap: 10 }}>
+                
             {showOntwikkelprofiel ? (
               <SummaryCard
                 title="Ontwikkelprofiel"
