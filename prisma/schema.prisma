@@ -41,7 +41,7 @@ model User {
 
 /**
  * =========================
- * Uitvoering (schooljaar / “25/26” etc.)
+ * Uitvoering (schooljaar / "25/26" etc.)
  * =========================
  * Bestaat in je DB (drift). Cohort.uitvoeringId verwijst hiernaar.
  */
@@ -196,6 +196,9 @@ model StudentCredential {
   supervisieCount    Int     @default(0) // vereist 12
   eindsupervisieDone Boolean @default(false)
 
+  // Praktijktoetsen
+  praktijktoetsStatus PraktijktoetsStatus @default(NIET_BEGONNEN)
+
   updatedAt DateTime @updatedAt
   createdAt DateTime @default(now())
 }
@@ -223,9 +226,16 @@ enum ReviewStatus {
   PUBLISHED
 }
 
+enum PraktijktoetsStatus {
+  NIET_BEGONNEN
+  BEZIG
+  GESLAAGD
+  HERKANSEN
+}
+
 model Session {
-  id        String @id @default(cuid())
-  tokenHash String @unique
+  id        String   @id @default(cuid())
+  tokenHash String   @unique
 
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
