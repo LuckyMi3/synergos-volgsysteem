@@ -842,12 +842,14 @@ export default function StudentDashboardPage() {
   const [currentUitvoering, setCurrentUitvoering] = useState<string | null>(null);
   const [moment, setMoment] = useState<ProfileMoment>("ALL");
   const [view, setView] = useState<"ontwikkel" | "vaardigheid" | "overlay" | "beide">("ontwikkel");
+    const SHOW_PROFIELEN_EN_DOSSIER = false; // tijdelijk verborgen op verzoek
 
   useEffect(() => {
     let cancelled = false;
 
-    (async () => {
-      try {
+
+(async () => {
+          try {
         const rU = await fetch("/api/system/current-uitvoering", { cache: "no-store" });
         const jU = await rU.json().catch(() => ({}));
         if (!cancelled) {
@@ -1015,7 +1017,7 @@ export default function StudentDashboardPage() {
         </div>
       ) : null}
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
+      {SHOW_PROFIELEN_EN_DOSSIER ? (
         <section style={{ border: "1px solid #eee", borderRadius: 14, padding: 16 }}>
           <div style={{ marginBottom: 12, fontWeight: 900 }}>Profielen</div>
 
@@ -1166,6 +1168,7 @@ export default function StudentDashboardPage() {
           )}
         </section>
       </div>
+          ) : null}
 
       <section style={{ border: "1px solid #eee", borderRadius: 14, padding: 16, marginTop: 24 }}>
         <div style={{ marginBottom: 10, fontWeight: 900 }}>Mijn cohorts</div>
