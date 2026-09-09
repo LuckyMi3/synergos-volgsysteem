@@ -1,7 +1,13 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { requireStaff } from "@/lib/auth/requireStaff";
 
 export async function POST(req: Request) {
+  const auth = await requireStaff();
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status });
+  }
+
   try {
     const body = await req.json();
     const assessmentId = typeof body?.assessmentId === "string" ? body.assessmentId.trim() : "";
@@ -12,6 +18,10 @@ export async function POST(req: Request) {
         { error: "assessmentId and teacherId are required" },
         { status: 400 }
       );
+    }
+
+    if (auth.role !== "ADMIN" && teacherId !== auth.userId) {
+      return NextResponse.json({ error: "Geen toegang" }, { status: 403 });
     }
 
     // Zorg dat assessment bestaat
