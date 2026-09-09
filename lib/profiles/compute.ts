@@ -58,6 +58,9 @@ const ZERO_VAARDIGHEID: VaardigheidValues = {
   positionering: 0,
 };
 
+// ✅ Thema-ID's hieronder volgen de huidige rubrics (lib/rubrics/1vo.ts en 2vo.ts).
+// Let op: als een rubric-thema-ID wijzigt, moet deze mapping mee-updaten,
+// anders vallen profielscores stil terug op 0.
 const RUBRIC_MAPPINGS: Record<string, RubricMapping> = {
   basisjaar: {
     themeDefaults: {},
@@ -66,80 +69,77 @@ const RUBRIC_MAPPINGS: Record<string, RubricMapping> = {
 
   "1vo": {
     themeDefaults: {
-      lichaamsbewustzijn: {
+      zelfbewustzijn_zelfreflectie: {
         ontwikkel: {
-          lichaamsbewustzijn: 1,
+          zelfinzicht: 0.7,
+          integratie: 0.3,
         },
         vaardigheid: {
-          lichamelijkheid: 1,
+          professioneel: 0.4,
+          methodisch: 0.6,
         },
       },
-      aanraking: {
+      ontwikkelvermogen_creativiteit: {
         ontwikkel: {
-          lichaamsbewustzijn: 0.45,
-          relationeel: 0.35,
-          draagkracht: 0.2,
+          creativiteit: 0.5,
+          zelfinzicht: 0.2,
+          integratie: 0.3,
         },
         vaardigheid: {
-          lichamelijkheid: 0.5,
-          relatie: 0.35,
-          professioneel: 0.15,
+          methodisch: 0.5,
+          professioneel: 0.5,
         },
       },
-      afstemming: {
+      lichaamsbewustzijn_belichaamde_ervaring: {
+        ontwikkel: {
+          lichaamsbewustzijn: 0.75,
+          relationeel: 0.25,
+        },
+        vaardigheid: {
+          lichamelijkheid: 0.75,
+          relatie: 0.25,
+        },
+      },
+      waarnemen_fenomenologisch_denken: {
+        ontwikkel: {
+          zelfinzicht: 0.35,
+          integratie: 0.65,
+        },
+        vaardigheid: {
+          betekenis: 0.6,
+          methodisch: 0.4,
+        },
+      },
+      interactie_relationele_competentie: {
         ontwikkel: {
           relationeel: 0.7,
           draagkracht: 0.3,
         },
         vaardigheid: {
-          relatie: 0.7,
-          lichamelijkheid: 0.3,
+          relatie: 0.65,
+          lichamelijkheid: 0.35,
         },
       },
-      grenzen: {
+      beginnende_professionele_houding: {
         ontwikkel: {
-          draagkracht: 0.6,
-          zelfinzicht: 0.15,
-          relationeel: 0.25,
+          draagkracht: 0.35,
+          zelfinzicht: 0.25,
+          integratie: 0.4,
         },
         vaardigheid: {
-          professioneel: 0.45,
-          relatie: 0.35,
+          professioneel: 0.55,
+          relatie: 0.25,
           lichamelijkheid: 0.2,
         },
       },
-      aanwezigheid: {
+      reflectie_evaluatie_feedback: {
         ontwikkel: {
-          draagkracht: 0.45,
-          lichaamsbewustzijn: 0.25,
-          integratie: 0.3,
+          zelfinzicht: 0.4,
+          integratie: 0.6,
         },
         vaardigheid: {
-          lichamelijkheid: 0.5,
-          professioneel: 0.2,
-          relatie: 0.3,
-        },
-      },
-      zelfreflectie: {
-        ontwikkel: {
-          zelfinzicht: 0.65,
-          integratie: 0.35,
-        },
-        vaardigheid: {
-          professioneel: 0.45,
           methodisch: 0.55,
-        },
-      },
-      professionele_houding: {
-        ontwikkel: {
-          zelfinzicht: 0.45,
-          draagkracht: 0.2,
-          integratie: 0.35,
-        },
-        vaardigheid: {
-          professioneel: 0.7,
-          methodisch: 0.2,
-          positionering: 0.1,
+          professioneel: 0.45,
         },
       },
     },
@@ -316,6 +316,10 @@ function inferScaleForRubric(rubricKey: string) {
 
   if (normalized === "1vo") {
     return { min: 0, max: 10 };
+  }
+
+  if (normalized === "2vo") {
+    return { min: 1, max: 10 };
   }
 
   return { min: 1, max: 5 };
