@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { badgeStyle, badgeLabel, type MomentStatusValue } from "@/lib/ui/moment-status";
 
 type MeUser = { id: string; role: string; name?: string };
 
@@ -12,7 +13,7 @@ type Cohort = {
   uitvoeringId: string;
 };
 
-type MomentStatus = "GEEN" | "LEEG" | "INGEVULD" | "CONCEPT" | "GEPUBLICEERD";
+type MomentStatus = MomentStatusValue;
 
 type StudentRow = {
   id: string;
@@ -20,36 +21,6 @@ type StudentRow = {
   email: string | null;
   moments: { M1: MomentStatus; M2: MomentStatus; M3: MomentStatus };
 };
-
-function badgeStyle(status: MomentStatus) {
-  switch (status) {
-    case "GEPUBLICEERD":
-      return { background: "#111", color: "#fff", border: "1px solid #111" };
-    case "CONCEPT":
-      return { background: "#fffbeb", color: "#92400e", border: "1px solid #fde68a" };
-    case "INGEVULD":
-      return { background: "#eff6ff", color: "#1d4ed8", border: "1px solid #bfdbfe" };
-    case "LEEG":
-      return { background: "#f3f4f6", color: "#6b7280", border: "1px solid #e5e7eb" };
-    default:
-      return { background: "#fafafa", color: "#b0b0b0", border: "1px solid #eee" };
-  }
-}
-
-function badgeLabel(status: MomentStatus) {
-  switch (status) {
-    case "GEPUBLICEERD":
-      return "Gepubliceerd";
-    case "CONCEPT":
-      return "Concept";
-    case "INGEVULD":
-      return "Ingevuld";
-    case "LEEG":
-      return "Gestart";
-    default:
-      return "Nog niet";
-  }
-}
 
 export default function DocentOverzichtPage() {
   const [me, setMe] = useState<MeUser | null>(null);
@@ -182,6 +153,14 @@ export default function DocentOverzichtPage() {
             ))
           )}
         </select>
+        {selectedCohortId ? (
+          <Link
+            href={`/docent/cohorten/${encodeURIComponent(selectedCohortId)}`}
+            style={{ marginLeft: 12, fontSize: 13, color: "#666" }}
+          >
+            Cohort-overzicht &rarr;
+          </Link>
+        ) : null}
       </div>
 
       {status ? (
