@@ -1,11 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { requireStaff } from "@/lib/auth/requireStaff";
 
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ teacherId: string }> }
 ) {
   const { teacherId } = await params;
+
+  const auth = await requireStaff();
+  if (auth.ok === false) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status });
+  }
+  if (auth.role !== "ADMIN" && auth.userId !== teacherId) {
+    return NextResponse.json({ error: "Geen toegang" }, { status: 403 });
+  }
+
   const { searchParams } = new URL(req.url);
   const cohortId = searchParams.get("cohortId");
 
