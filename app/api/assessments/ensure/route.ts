@@ -1,9 +1,15 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { requireUser } from "@/lib/auth/requireUser";
 
 const ALLOWED_MOMENTS = new Set(["M1", "M2", "M3"]);
 
 export async function POST(req: Request) {
+  const auth = await requireUser();
+  if (auth.ok === false) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status });
+  }
+
   try {
     const body = await req.json();
 
@@ -19,6 +25,10 @@ export async function POST(req: Request) {
         { error: "moment must be one of M1, M2, M3" },
         { status: 400 }
       );
+    }
+
+    if (auth.role === "STUDENT" && auth.userId !== studentId) {
+      return NextResponse.json({ error: "Geen toegang" }, { status: 403 });
     }
 
     const moment = momentRaw as "M1" | "M2" | "M3";
