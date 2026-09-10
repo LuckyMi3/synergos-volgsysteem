@@ -19,6 +19,23 @@ export default async function TeacherLayout({ children }: { children: ReactNode 
     );
   }
 
-  return <>{children}</>;
+  return (
+    <>
+      <nav
+        style={{
+          display: "flex",
+          gap: 16,
+          padding: "12px 24px",
+          borderBottom: "1px solid #eee",
+          fontSize: 14,
+          fontWeight: 700,
+        }}
+      >
+        <Link href="/docent">Feedback</Link>
+        <Link href="/docent/overzicht">Studentenoverzicht</Link>
+      </nav>
+      {children}
+    </>
+  );
 }
 
