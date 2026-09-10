@@ -9,7 +9,7 @@ export async function GET(
   const { teacherId } = await params;
 
   const auth = await requireStaff();
-  if (!auth.ok) {
+  if (auth.ok === false) {
     return NextResponse.json({ error: auth.error }, { status: auth.status });
   }
   if (auth.role !== "ADMIN" && auth.userId !== teacherId) {
