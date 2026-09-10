@@ -148,7 +148,7 @@ export default function DocentOverzichtPage() {
           ) : (
             cohorts.map((c) => (
               <option key={c.id} value={c.id}>
-                {c.naam}
+                {c.naam} · {c.uitvoeringId}
               </option>
             ))
           )}

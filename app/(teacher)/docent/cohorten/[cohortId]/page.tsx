@@ -37,7 +37,7 @@ type StudentRow = {
 };
 
 type CohortOverzicht = {
-  cohort: { id: string; naam: string; traject: string | null };
+  cohort: { id: string; naam: string; traject: string | null; uitvoeringId: string };
   students: StudentRow[];
 };
 
@@ -159,7 +159,12 @@ export default function CohortOverzichtPage() {
         }}
       >
         <div>
-          <h1 style={{ fontSize: 24 }}>{data.cohort.naam}</h1>
+          <h1 style={{ fontSize: 24 }}>
+            {data.cohort.naam}{" "}
+            <span style={{ fontSize: 15, fontWeight: 400, color: "#666" }}>
+              · schooljaar {data.cohort.uitvoeringId}
+            </span>
+          </h1>
           <p style={{ fontSize: 13, color: "#666" }}>
             {data.cohort.traject} · {data.students.length} studenten
             {cohortGemiddelde != null && ` · cohortgemiddelde ${cohortGemiddelde}`}

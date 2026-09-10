@@ -46,7 +46,7 @@ export async function GET(
 
     const cohort = await prisma.cohort.findUnique({
       where: { id: cohortId },
-      select: { id: true, naam: true, traject: true },
+      select: { id: true, naam: true, traject: true, uitvoeringId: true },
     });
 
     if (!cohort) {
@@ -128,7 +128,12 @@ export async function GET(
     });
 
     return NextResponse.json({
-      cohort: { id: cohort.id, naam: cohort.naam, traject: cohort.traject },
+      cohort: {
+        id: cohort.id,
+        naam: cohort.naam,
+        traject: cohort.traject,
+        uitvoeringId: cohort.uitvoeringId,
+      },
       students,
     });
   } catch (err) {
