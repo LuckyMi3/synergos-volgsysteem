@@ -82,7 +82,7 @@ export default function LoginPage() {
           <div className="px-7 py-6 border-b border-slate-100">
             <div className="text-center">
               <h1 className="text-3xl font-semibold tracking-tight text-slate-900">
-                Mijn Synergos
+                Synergos Zelfvolgsysteem
               </h1>
               <p className="mt-1 text-sm text-slate-500">
                 Log in op je omgeving
