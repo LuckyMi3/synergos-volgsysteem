@@ -663,28 +663,35 @@ export default function DocentPage() {
 
       {/* status */}
       <div style={{ marginBottom: 16, fontSize: 12, color: "#666" }}>
-        <div>
-          <strong>Teacher:</strong> {displayNameFromMe(me)}
-        </div>
-        <div>
-          <strong>Cohort:</strong>{" "}
-          {selectedCohort ? `${selectedCohort.naam} (${selectedCohort.id})` : "—"}
-        </div>
-        <div>
-          <strong>Traject/rubricKey:</strong>{" "}
-          <span style={{ fontFamily: "monospace" }}>{rubricKey}</span>
-        </div>
-        <div>
-          <strong>Student:</strong>{" "}
-          {selectedStudent ? `${selectedStudent.name} (${selectedStudent.id})` : "—"}
-        </div>
-        <div>
-          <strong>Moment:</strong> {moment}
-        </div>
-        <div>
-          <strong>AssessmentId:</strong>{" "}
-          <span style={{ fontFamily: "monospace" }}>{assessmentId ?? "—"}</span>
-        </div>
+        <details style={{ border: "1px solid #eee", borderRadius: 8, padding: "8px 12px" }}>
+          <summary style={{ cursor: "pointer", fontWeight: 700, color: "#444" }}>
+            Meta-data
+          </summary>
+          <div style={{ marginTop: 8 }}>
+            <div>
+              <strong>Teacher:</strong> {displayNameFromMe(me)}
+            </div>
+            <div>
+              <strong>Cohort:</strong>{" "}
+              {selectedCohort ? `${selectedCohort.naam} (${selectedCohort.id})` : "—"}
+            </div>
+            <div>
+              <strong>Traject/rubricKey:</strong>{" "}
+              <span style={{ fontFamily: "monospace" }}>{rubricKey}</span>
+            </div>
+            <div>
+              <strong>Student:</strong>{" "}
+              {selectedStudent ? `${selectedStudent.name} (${selectedStudent.id})` : "—"}
+            </div>
+            <div>
+              <strong>Moment:</strong> {moment}
+            </div>
+            <div>
+              <strong>AssessmentId:</strong>{" "}
+              <span style={{ fontFamily: "monospace" }}>{assessmentId ?? "—"}</span>
+            </div>
+          </div>
+        </details>
         {status ? <div style={{ marginTop: 6 }}>{status}</div> : null}
       </div>
 
