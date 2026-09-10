@@ -4,7 +4,7 @@ import { requireStaff } from "@/lib/auth/requireStaff";
 
 export async function GET(req: Request) {
   const auth = await requireStaff();
-  if (!auth.ok) {
+  if (auth.ok === false) {
     return NextResponse.json({ error: auth.error }, { status: auth.status });
   }
 
@@ -37,7 +37,7 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   const auth = await requireStaff();
-  if (!auth.ok) {
+  if (auth.ok === false) {
     return NextResponse.json({ error: auth.error }, { status: auth.status });
   }
 
